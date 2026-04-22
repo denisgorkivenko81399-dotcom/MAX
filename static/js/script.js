@@ -61,56 +61,57 @@ async function setVisit(museumId, visited) {
     await loadVisits();
 }
 
-// Рендер главной (карточки музеев)
-async function renderMain() {
-    const container = document.getElementById('museums-list');
-    if (!container) return;
-    container.innerHTML = '';
-    for (const m of museums) {
-        const isSubscribed = subscriptions.includes(m.id);
-        const isVisited = visits.some(v => v.museum_id === m.id && v.visited === 1);
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-            <h3>${escapeHtml(m.name)}</h3>
-            ${m.photo_url ? `<img src="${m.photo_url}" alt="фото музея" onerror="this.src='https://placehold.co/600x400?text=Нет+фото'">` : ''}
-            <p>${escapeHtml(m.description || '')}</p>
-            <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(m.address)}</p>
-            ${m.website ? `<p><i class="fas fa-globe"></i> <a href="${m.website}" target="_blank">Сайт музея</a></p>` : ''}
-            <div>
-                <button class="exhibits-btn" data-id="${m.id}"><i class="fas fa-search"></i> Экспонаты</button>
-                <button class="subscribe-btn" data-id="${m.id}">${isSubscribed ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться'}</button>
-                <button class="visit-btn" data-id="${m.id}" data-visited="${isVisited}">${isVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение'}</button>
-            </div>
-        `;
-        container.appendChild(card);
-    }
-    // Навешиваем обработчики
-    document.querySelectorAll('.exhibits-btn').forEach(btn => {
-        btn.addEventListener('click', () => showExhibits(parseInt(btn.dataset.id)));
+// Показать детальную карточку музея в модалке (НОВАЯ ФУНКЦИЯ)
+async function showMuseumDetails(museumId) {
+    const museum = museums.find(m => m.id === museumId);
+    if (!museum) return;
+    const isSubscribed = subscriptions.includes(museum.id);
+    const isVisited = visits.some(v => v.museum_id === museum.id && v.visited === 1);
+    
+    const modal = document.getElementById('museumModal');
+    const container = document.getElementById('museumDetailContent');
+    
+    container.innerHTML = `
+        <h2>${escapeHtml(museum.name)}</h2>
+        ${museum.photo_url ? `<img src="${museum.photo_url}" style="width:100%; max-height:300px; object-fit:cover; border-radius:20px; margin:10px 0;" onerror="this.src='https://placehold.co/600x400?text=Нет+фото'">` : ''}
+        <p><i class="fas fa-map-marker-alt"></i> <strong>Адрес:</strong> ${escapeHtml(museum.address)}</p>
+        <p><i class="fas fa-info-circle"></i> <strong>Описание:</strong><br>${escapeHtml(museum.description || '')}</p>
+        <p><i class="fas fa-phone"></i> <strong>Контакты:</strong> ${escapeHtml(museum.contacts || 'не указаны')}</p>
+        ${museum.website ? `<p><i class="fas fa-globe"></i> <strong>Сайт:</strong> <a href="${museum.website}" target="_blank">${escapeHtml(museum.website)}</a></p>` : ''}
+        <hr>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+            <button id="detailExhibitsBtn" data-id="${museum.id}"><i class="fas fa-search"></i> Экспонаты</button>
+            <button id="detailSubscribeBtn" data-id="${museum.id}">${isSubscribed ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться'}</button>
+            <button id="detailVisitBtn" data-id="${museum.id}" data-visited="${isVisited}">${isVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение'}</button>
+        </div>
+    `;
+    
+    modal.classList.remove('hidden');
+    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
+    
+    // Обработчики кнопок внутри модалки
+    document.getElementById('detailExhibitsBtn').addEventListener('click', () => {
+        modal.classList.add('hidden');
+        showExhibits(museum.id);
     });
-    document.querySelectorAll('.subscribe-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const museumId = parseInt(btn.dataset.id);
-            const isSub = subscriptions.includes(museumId);
-            if (isSub) {
-                await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
-            } else {
-                await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
-            }
-            await loadSubscriptions();
-            renderMain();
-            if (document.getElementById('showOnlySubscribedEvents')?.checked) renderEvents();
-        });
+    document.getElementById('detailSubscribeBtn').addEventListener('click', async () => {
+        const isSub = subscriptions.includes(museum.id);
+        if (isSub) {
+            await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
+        } else {
+            await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
+        }
+        await loadSubscriptions();
+        renderMain();
+        if (document.getElementById('showOnlySubscribedEvents')?.checked) renderEvents();
+        showMuseumDetails(museum.id); // обновить модалку
     });
-    document.querySelectorAll('.visit-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const museumId = parseInt(btn.dataset.id);
-            const currentlyVisited = btn.dataset.visited === 'true';
-            await setVisit(museumId, !currentlyVisited);
-            renderMain();
-            renderPassport();
-        });
+    document.getElementById('detailVisitBtn').addEventListener('click', async () => {
+        const currentlyVisited = document.getElementById('detailVisitBtn').dataset.visited === 'true';
+        await setVisit(museum.id, !currentlyVisited);
+        renderMain();
+        renderPassport();
+        showMuseumDetails(museum.id); // обновить модалку
     });
 }
 
@@ -128,6 +129,71 @@ async function showExhibits(museumId) {
     `).join('') : '<p>Экспонатов пока нет.</p>';
     modal.classList.remove('hidden');
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
+}
+
+// Рендер главной (карточки музеев) с кликом по карточке
+async function renderMain() {
+    const container = document.getElementById('museums-list');
+    if (!container) return;
+    container.innerHTML = '';
+    for (const m of museums) {
+        const isSubscribed = subscriptions.includes(m.id);
+        const isVisited = visits.some(v => v.museum_id === m.id && v.visited === 1);
+        const card = document.createElement('div');
+        card.className = 'card';
+        // Сделаем карточку кликабельной
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', (e) => {
+            // Не срабатывать, если клик по кнопке или внутри неё
+            if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+            showMuseumDetails(m.id);
+        });
+        card.innerHTML = `
+            <h3>${escapeHtml(m.name)}</h3>
+            ${m.photo_url ? `<img src="${m.photo_url}" alt="фото музея" onerror="this.src='https://placehold.co/600x400?text=Нет+фото'">` : ''}
+            <p>${escapeHtml(m.description || '')}</p>
+            <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(m.address)}</p>
+            ${m.website ? `<p><i class="fas fa-globe"></i> <a href="${m.website}" target="_blank">Сайт музея</a></p>` : ''}
+            <div>
+                <button class="exhibits-btn" data-id="${m.id}"><i class="fas fa-search"></i> Экспонаты</button>
+                <button class="subscribe-btn" data-id="${m.id}">${isSubscribed ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться'}</button>
+                <button class="visit-btn" data-id="${m.id}" data-visited="${isVisited}">${isVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение'}</button>
+            </div>
+        `;
+        container.appendChild(card);
+    }
+    // Навешиваем обработчики на кнопки (чтобы они не конфликтовали с кликом по карточке)
+    document.querySelectorAll('.exhibits-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showExhibits(parseInt(btn.dataset.id));
+        });
+    });
+    document.querySelectorAll('.subscribe-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const museumId = parseInt(btn.dataset.id);
+            const isSub = subscriptions.includes(museumId);
+            if (isSub) {
+                await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
+            } else {
+                await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
+            }
+            await loadSubscriptions();
+            renderMain();
+            if (document.getElementById('showOnlySubscribedEvents')?.checked) renderEvents();
+        });
+    });
+    document.querySelectorAll('.visit-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const museumId = parseInt(btn.dataset.id);
+            const currentlyVisited = btn.dataset.visited === 'true';
+            await setVisit(museumId, !currentlyVisited);
+            renderMain();
+            renderPassport();
+        });
+    });
 }
 
 // Яндекс.Карты
@@ -223,6 +289,7 @@ async function initAdmin() {
     document.getElementById('addEventBtn').addEventListener('click', () => showEventForm());
 }
 async function loadAdminData() {
+    // Загружаем списки музеев и событий для админа
     const museumsData = await api('/api/admin/museums');
     const eventsData = await api('/api/events');
     const museumsDiv = document.getElementById('museumsAdminList');
@@ -246,7 +313,7 @@ async function loadAdminData() {
                 await loadMuseums();
                 renderMain();
                 renderPassport();
-                if (window.ymaps && ymapsReady) initYandexMap();
+                if (window.ymaps) initYandexMap();
             }
         });
     });
@@ -288,11 +355,11 @@ function showMuseumForm(id = null) {
     if (id) {
         data.id = id;
         api('/api/admin/museums', { method: 'PUT', body: JSON.stringify(data) }).then(() => {
-            loadAdminData(); loadMuseums(); renderMain(); renderPassport(); if(window.ymaps && ymapsReady) initYandexMap();
+            loadAdminData(); loadMuseums(); renderMain(); renderPassport(); if(window.ymaps) initYandexMap();
         });
     } else {
         api('/api/admin/museums', { method: 'POST', body: JSON.stringify(data) }).then(() => {
-            loadAdminData(); loadMuseums(); renderMain(); renderPassport(); if(window.ymaps && ymapsReady) initYandexMap();
+            loadAdminData(); loadMuseums(); renderMain(); renderPassport(); if(window.ymaps) initYandexMap();
         });
     }
 }
@@ -312,6 +379,7 @@ function showEventForm(id = null) {
     }
 }
 
+// Вспомогательная функция для защиты от XSS
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -331,8 +399,8 @@ function initTabs() {
             const tab = btn.dataset.tab;
             document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
             document.getElementById(`${tab}-tab`).classList.add('active');
-            if (tab === 'map' && window.ymaps && ymapsReady) {
-                setTimeout(() => window.ymaps.geolocation?.(), 100);
+            if (tab === 'map' && window.ymaps) {
+                setTimeout(() => window.ymaps?.geolocation?, 100);
             }
             if (tab === 'events') renderEvents();
             if (tab === 'passport') renderPassport();
@@ -350,10 +418,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderPassport();
     initTabs();
     initAdmin();
+    // Подписка на чекбокс "только из подписанных"
     const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
     if (filterCheckbox) {
         filterCheckbox.addEventListener('change', () => renderEvents());
     }
+    // Яндекс.Карты загружаются асинхронно
     ymaps.ready(() => {
         ymapsReady = true;
         initYandexMap();
