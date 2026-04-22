@@ -18,7 +18,8 @@ function getUserId() {
             localStorage.setItem('demo_user_id', uid);
         }
     }
-    document.getElementById('userIdDisplay').innerText = uid.slice(0, 8);
+    const userIdSpan = document.getElementById('userIdDisplay');
+    if (userIdSpan) userIdSpan.innerText = uid.slice(0, 8);
     return uid;
 }
 
@@ -38,7 +39,8 @@ async function loadMuseums() {
 }
 async function loadEvents() {
     const params = new URLSearchParams();
-    if (document.getElementById('showOnlySubscribedEvents')?.checked && subscriptions.length) {
+    const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
+    if (filterCheckbox && filterCheckbox.checked && subscriptions.length) {
         params.append('user_id', currentUserId);
     }
     events = await api('/api/events?' + params.toString());
@@ -61,7 +63,7 @@ async function setVisit(museumId, visited) {
     await loadVisits();
 }
 
-// Показать детальную карточку музея в модалке (НОВАЯ ФУНКЦИЯ)
+// Показать детальную карточку музея в модалке
 async function showMuseumDetails(museumId) {
     const museum = museums.find(m => m.id === museumId);
     if (!museum) return;
@@ -70,6 +72,7 @@ async function showMuseumDetails(museumId) {
     
     const modal = document.getElementById('museumModal');
     const container = document.getElementById('museumDetailContent');
+    if (!modal || !container) return;
     
     container.innerHTML = `
         <h2>${escapeHtml(museum.name)}</h2>
@@ -87,32 +90,43 @@ async function showMuseumDetails(museumId) {
     `;
     
     modal.classList.remove('hidden');
-    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
+    const closeSpan = modal.querySelector('.close');
+    if (closeSpan) closeSpan.onclick = () => modal.classList.add('hidden');
     
     // Обработчики кнопок внутри модалки
-    document.getElementById('detailExhibitsBtn').addEventListener('click', () => {
-        modal.classList.add('hidden');
-        showExhibits(museum.id);
-    });
-    document.getElementById('detailSubscribeBtn').addEventListener('click', async () => {
-        const isSub = subscriptions.includes(museum.id);
-        if (isSub) {
-            await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
-        } else {
-            await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
-        }
-        await loadSubscriptions();
-        renderMain();
-        if (document.getElementById('showOnlySubscribedEvents')?.checked) renderEvents();
-        showMuseumDetails(museum.id); // обновить модалку
-    });
-    document.getElementById('detailVisitBtn').addEventListener('click', async () => {
-        const currentlyVisited = document.getElementById('detailVisitBtn').dataset.visited === 'true';
-        await setVisit(museum.id, !currentlyVisited);
-        renderMain();
-        renderPassport();
-        showMuseumDetails(museum.id); // обновить модалку
-    });
+    const exhibitsBtn = document.getElementById('detailExhibitsBtn');
+    if (exhibitsBtn) {
+        exhibitsBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+            showExhibits(museum.id);
+        });
+    }
+    const subscribeBtn = document.getElementById('detailSubscribeBtn');
+    if (subscribeBtn) {
+        subscribeBtn.addEventListener('click', async () => {
+            const isSub = subscriptions.includes(museum.id);
+            if (isSub) {
+                await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
+            } else {
+                await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
+            }
+            await loadSubscriptions();
+            renderMain();
+            const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
+            if (filterCheckbox && filterCheckbox.checked) renderEvents();
+            showMuseumDetails(museum.id);
+        });
+    }
+    const visitBtn = document.getElementById('detailVisitBtn');
+    if (visitBtn) {
+        visitBtn.addEventListener('click', async () => {
+            const currentlyVisited = visitBtn.dataset.visited === 'true';
+            await setVisit(museum.id, !currentlyVisited);
+            renderMain();
+            renderPassport();
+            showMuseumDetails(museum.id);
+        });
+    }
 }
 
 // Показать экспонаты в модалке
@@ -120,15 +134,21 @@ async function showExhibits(museumId) {
     const exhibits = await api(`/api/exhibits/${museumId}`);
     const modal = document.getElementById('exhibitsModal');
     const container = document.getElementById('exhibitsListModal');
-    container.innerHTML = exhibits.length ? exhibits.map(ex => `
-        <div class="card">
-            <h4>${escapeHtml(ex.name)}</h4>
-            <p>${escapeHtml(ex.description || '')}</p>
-            ${ex.photo_url ? `<img src="${ex.photo_url}" style="max-height:150px">` : ''}
-        </div>
-    `).join('') : '<p>Экспонатов пока нет.</p>';
+    if (!modal || !container) return;
+    if (exhibits.length) {
+        container.innerHTML = exhibits.map(ex => `
+            <div class="card">
+                <h4>${escapeHtml(ex.name)}</h4>
+                <p>${escapeHtml(ex.description || '')}</p>
+                ${ex.photo_url ? `<img src="${ex.photo_url}" style="max-height:150px">` : ''}
+            </div>
+        `).join('');
+    } else {
+        container.innerHTML = '<p>Экспонатов пока нет.</p>';
+    }
     modal.classList.remove('hidden');
-    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
+    const closeSpan = modal.querySelector('.close');
+    if (closeSpan) closeSpan.onclick = () => modal.classList.add('hidden');
 }
 
 // Рендер главной (карточки музеев) с кликом по карточке
@@ -141,10 +161,8 @@ async function renderMain() {
         const isVisited = visits.some(v => v.museum_id === m.id && v.visited === 1);
         const card = document.createElement('div');
         card.className = 'card';
-        // Сделаем карточку кликабельной
         card.style.cursor = 'pointer';
         card.addEventListener('click', (e) => {
-            // Не срабатывать, если клик по кнопке или внутри неё
             if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
             showMuseumDetails(m.id);
         });
@@ -162,7 +180,7 @@ async function renderMain() {
         `;
         container.appendChild(card);
     }
-    // Навешиваем обработчики на кнопки (чтобы они не конфликтовали с кликом по карточке)
+    // Навешиваем обработчики на кнопки
     document.querySelectorAll('.exhibits-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -181,7 +199,8 @@ async function renderMain() {
             }
             await loadSubscriptions();
             renderMain();
-            if (document.getElementById('showOnlySubscribedEvents')?.checked) renderEvents();
+            const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
+            if (filterCheckbox && filterCheckbox.checked) renderEvents();
         });
     });
     document.querySelectorAll('.visit-btn').forEach(btn => {
@@ -198,7 +217,9 @@ async function renderMain() {
 
 // Яндекс.Карты
 function initYandexMap() {
-    if (!ymapsReady) return;
+    if (!ymapsReady || !window.ymaps) return;
+    const mapElement = document.getElementById('map');
+    if (!mapElement) return;
     const map = new ymaps.Map('map', {
         center: [45.04, 41.97],
         zoom: 8,
@@ -223,14 +244,18 @@ async function renderEvents() {
     await loadEvents();
     const container = document.getElementById('events-list');
     if (!container) return;
-    container.innerHTML = events.map(ev => `
-        <div class="card">
-            <h3>${escapeHtml(ev.title)}</h3>
-            <p><i class="fas fa-calendar-day"></i> ${ev.date || 'Дата не указана'}</p>
-            <p><i class="fas fa-landmark"></i> ${escapeHtml(ev.museum_name)}</p>
-            <p>${escapeHtml(ev.description || '')}</p>
-        </div>
-    `).join('');
+    if (events.length) {
+        container.innerHTML = events.map(ev => `
+            <div class="card">
+                <h3>${escapeHtml(ev.title)}</h3>
+                <p><i class="fas fa-calendar-day"></i> ${ev.date || 'Дата не указана'}</p>
+                <p><i class="fas fa-landmark"></i> ${escapeHtml(ev.museum_name)}</p>
+                <p>${escapeHtml(ev.description || '')}</p>
+            </div>
+        `).join('');
+    } else {
+        container.innerHTML = '<p>Событий пока нет.</p>';
+    }
 }
 
 // Паспорт: список музеев с чекбоксами, прогресс-бар
@@ -250,95 +275,113 @@ async function renderPassport() {
         <div id="museumsChecklist"></div>
     `;
     const checklistDiv = document.getElementById('museumsChecklist');
-    checklistDiv.innerHTML = museums.map(m => {
-        const isChecked = visits.some(v => v.museum_id === m.id && v.visited === 1);
-        return `
-            <div class="card">
-                <label style="display:flex; align-items:center; gap:10px;">
-                    <input type="checkbox" class="museum-visit-checkbox" data-id="${m.id}" ${isChecked ? 'checked' : ''}>
-                    <strong>${escapeHtml(m.name)}</strong>
-                </label>
-            </div>
-        `;
-    }).join('');
-    document.querySelectorAll('.museum-visit-checkbox').forEach(cb => {
-        cb.addEventListener('change', async (e) => {
-            const museumId = parseInt(cb.dataset.id);
-            await setVisit(museumId, cb.checked);
-            renderPassport();
-            renderMain(); // обновить кнопки на главной
+    if (checklistDiv) {
+        checklistDiv.innerHTML = museums.map(m => {
+            const isChecked = visits.some(v => v.museum_id === m.id && v.visited === 1);
+            return `
+                <div class="card">
+                    <label style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" class="museum-visit-checkbox" data-id="${m.id}" ${isChecked ? 'checked' : ''}>
+                        <strong>${escapeHtml(m.name)}</strong>
+                    </label>
+                </div>
+            `;
+        }).join('');
+        document.querySelectorAll('.museum-visit-checkbox').forEach(cb => {
+            cb.addEventListener('change', async (e) => {
+                const museumId = parseInt(cb.dataset.id);
+                await setVisit(museumId, cb.checked);
+                renderPassport();
+                renderMain();
+            });
         });
-    });
+    }
 }
 
 // Админ-панель (CRUD музеев и событий)
 async function initAdmin() {
-    document.getElementById('adminLoginBtn').addEventListener('click', () => {
-        document.getElementById('adminLoginForm').classList.toggle('hidden');
-    });
-    document.getElementById('doAdminLogin').addEventListener('click', async () => {
-        const pwd = document.getElementById('adminPassword').value;
-        if (pwd === 'admin123') {
-            isAdmin = true;
-            document.getElementById('adminControls').classList.remove('hidden');
-            document.getElementById('adminLoginForm').classList.add('hidden');
-            loadAdminData();
-        } else alert('Неверный пароль');
-    });
-    document.getElementById('addMuseumBtn').addEventListener('click', () => showMuseumForm());
-    document.getElementById('addEventBtn').addEventListener('click', () => showEventForm());
+    const loginBtn = document.getElementById('adminLoginBtn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            const form = document.getElementById('adminLoginForm');
+            if (form) form.classList.toggle('hidden');
+        });
+    }
+    const doLogin = document.getElementById('doAdminLogin');
+    if (doLogin) {
+        doLogin.addEventListener('click', async () => {
+            const pwdInput = document.getElementById('adminPassword');
+            if (pwdInput && pwdInput.value === 'admin123') {
+                isAdmin = true;
+                const controls = document.getElementById('adminControls');
+                if (controls) controls.classList.remove('hidden');
+                const form = document.getElementById('adminLoginForm');
+                if (form) form.classList.add('hidden');
+                loadAdminData();
+            } else {
+                alert('Неверный пароль');
+            }
+        });
+    }
+    const addMuseum = document.getElementById('addMuseumBtn');
+    if (addMuseum) addMuseum.addEventListener('click', () => showMuseumForm());
+    const addEvent = document.getElementById('addEventBtn');
+    if (addEvent) addEvent.addEventListener('click', () => showEventForm());
 }
 async function loadAdminData() {
-    // Загружаем списки музеев и событий для админа
     const museumsData = await api('/api/admin/museums');
     const eventsData = await api('/api/events');
     const museumsDiv = document.getElementById('museumsAdminList');
-    museumsDiv.innerHTML = museumsData.map(m => `
-        <div class="admin-item">
-            <span><strong>${escapeHtml(m.name)}</strong></span>
-            <div>
-                <button class="edit-museum" data-id="${m.id}"><i class="fas fa-edit"></i></button>
-                <button class="delete-museum" data-id="${m.id}"><i class="fas fa-trash"></i></button>
+    if (museumsDiv) {
+        museumsDiv.innerHTML = museumsData.map(m => `
+            <div class="admin-item">
+                <span><strong>${escapeHtml(m.name)}</strong></span>
+                <div>
+                    <button class="edit-museum" data-id="${m.id}"><i class="fas fa-edit"></i></button>
+                    <button class="delete-museum" data-id="${m.id}"><i class="fas fa-trash"></i></button>
+                </div>
             </div>
-        </div>
-    `).join('');
-    document.querySelectorAll('.edit-museum').forEach(btn => {
-        btn.addEventListener('click', () => showMuseumForm(parseInt(btn.dataset.id)));
-    });
-    document.querySelectorAll('.delete-museum').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (confirm('Удалить музей?')) {
-                await api('/api/admin/museums', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
-                loadAdminData();
-                await loadMuseums();
-                renderMain();
-                renderPassport();
-                if (window.ymaps) initYandexMap();
-            }
+        `).join('');
+        document.querySelectorAll('.edit-museum').forEach(btn => {
+            btn.addEventListener('click', () => showMuseumForm(parseInt(btn.dataset.id)));
         });
-    });
+        document.querySelectorAll('.delete-museum').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (confirm('Удалить музей?')) {
+                    await api('/api/admin/museums', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
+                    await loadAdminData();
+                    await loadMuseums();
+                    renderMain();
+                    renderPassport();
+                    if (window.ymaps && ymapsReady) initYandexMap();
+                }
+            });
+        });
+    }
     const eventsDiv = document.getElementById('eventsAdminList');
-    eventsDiv.innerHTML = eventsData.map(e => `
-        <div class="admin-item">
-            <span><strong>${escapeHtml(e.title)}</strong> (${e.museum_name})</span>
-            <div>
-                <button class="edit-event" data-id="${e.id}"><i class="fas fa-edit"></i></button>
-                <button class="delete-event" data-id="${e.id}"><i class="fas fa-trash"></i></button>
+    if (eventsDiv) {
+        eventsDiv.innerHTML = eventsData.map(e => `
+            <div class="admin-item">
+                <span><strong>${escapeHtml(e.title)}</strong> (${e.museum_name})</span>
+                <div>
+                    <button class="edit-event" data-id="${e.id}"><i class="fas fa-edit"></i></button>
+                    <button class="delete-event" data-id="${e.id}"><i class="fas fa-trash"></i></button>
+                </div>
             </div>
-        </div>
-    `).join('');
-    document.querySelectorAll('.edit-event').forEach(btn => {
-        btn.addEventListener('click', () => showEventForm(parseInt(btn.dataset.id)));
-    });
-    document.querySelectorAll('.delete-event').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if (confirm('Удалить событие?')) {
-                await api('/api/admin/events', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
-                loadAdminData();
-                renderEvents();
-            }
+        `).join('');
+        document.querySelectorAll('.edit-event').forEach(btn => {
+            btn.addEventListener('click', () => showEventForm(parseInt(btn.dataset.id)));
         });
-    });
+        document.querySelectorAll('.delete-event').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (confirm('Удалить событие?')) {
+                    await api('/api/admin/events', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
+                    await loadAdminData();
+                    renderEvents();
+                }
+            });
+        });
+    }
 }
 function showMuseumForm(id = null) {
     const museum = id ? museums.find(m => m.id === id) : null;
@@ -355,11 +398,21 @@ function showMuseumForm(id = null) {
     if (id) {
         data.id = id;
         api('/api/admin/museums', { method: 'PUT', body: JSON.stringify(data) }).then(() => {
-            loadAdminData(); loadMuseums(); renderMain(); renderPassport(); if(window.ymaps) initYandexMap();
+            loadAdminData();
+            loadMuseums().then(() => {
+                renderMain();
+                renderPassport();
+                if (window.ymaps && ymapsReady) initYandexMap();
+            });
         });
     } else {
         api('/api/admin/museums', { method: 'POST', body: JSON.stringify(data) }).then(() => {
-            loadAdminData(); loadMuseums(); renderMain(); renderPassport(); if(window.ymaps) initYandexMap();
+            loadAdminData();
+            loadMuseums().then(() => {
+                renderMain();
+                renderPassport();
+                if (window.ymaps && ymapsReady) initYandexMap();
+            });
         });
     }
 }
@@ -373,9 +426,15 @@ function showEventForm(id = null) {
     const data = { museum_id: parseInt(museumId), title, date, description: desc };
     if (id) {
         data.id = id;
-        api('/api/admin/events', { method: 'PUT', body: JSON.stringify(data) }).then(() => { loadAdminData(); renderEvents(); });
+        api('/api/admin/events', { method: 'PUT', body: JSON.stringify(data) }).then(() => {
+            loadAdminData();
+            renderEvents();
+        });
     } else {
-        api('/api/admin/events', { method: 'POST', body: JSON.stringify(data) }).then(() => { loadAdminData(); renderEvents(); });
+        api('/api/admin/events', { method: 'POST', body: JSON.stringify(data) }).then(() => {
+            loadAdminData();
+            renderEvents();
+        });
     }
 }
 
@@ -398,9 +457,16 @@ function initTabs() {
             btn.classList.add('active');
             const tab = btn.dataset.tab;
             document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
-            document.getElementById(`${tab}-tab`).classList.add('active');
-            if (tab === 'map' && window.ymaps) {
-                setTimeout(() => window.ymaps?.geolocation?, 100);
+            const activePane = document.getElementById(`${tab}-tab`);
+            if (activePane) activePane.classList.add('active');
+            if (tab === 'map') {
+                if (window.ymaps && ymapsReady) {
+                    setTimeout(() => {
+                        if (window.ymaps && window.ymaps.geolocation) {
+                            // просто обновить карту
+                        }
+                    }, 100);
+                }
             }
             if (tab === 'events') renderEvents();
             if (tab === 'passport') renderPassport();
@@ -418,14 +484,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderPassport();
     initTabs();
     initAdmin();
-    // Подписка на чекбокс "только из подписанных"
     const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
     if (filterCheckbox) {
         filterCheckbox.addEventListener('change', () => renderEvents());
     }
-    // Яндекс.Карты загружаются асинхронно
-    ymaps.ready(() => {
-        ymapsReady = true;
-        initYandexMap();
-    });
+    if (typeof ymaps !== 'undefined') {
+        ymaps.ready(() => {
+            ymapsReady = true;
+            initYandexMap();
+        });
+    }
 });
