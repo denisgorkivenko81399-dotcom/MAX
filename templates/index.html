@@ -64,5 +64,12 @@
         </div>
     </div>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <!-- Модальное окно для деталей музея -->
+<div id="museumModal" class="modal hidden">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close">&times;</span>
+        <div id="museumDetailContent"></div>
+    </div>
+</div>
 </body>
 </html>
