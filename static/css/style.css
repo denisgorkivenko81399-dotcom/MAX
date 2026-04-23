@@ -1,4 +1,4 @@
-/* Базовые стили */
+/* Базовые стили (оставляем как было, добавляем пару строк) */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -54,12 +54,10 @@ body {
     padding: 1rem;
     box-shadow: 0 6px 14px rgba(0,0,0,0.05);
     border: 1px solid #f2e5d8;
-    cursor: pointer;           /* Добавлено */
-    transition: transform 0.1s ease; /* Добавлено для эффекта нажатия */
+    cursor: pointer;
+    transition: transform 0.1s ease;
 }
-.card:active {
-    transform: scale(0.99);    /* Эффект нажатия */
-}
+.card:active { transform: scale(0.99); }
 .card h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; color: #3b2a1e; }
 .card p { font-size: 0.9rem; color: #4f3f2e; margin: 0.25rem 0; }
 .card img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 20px; margin-top: 0.75rem; background: #f0e3d4; }
@@ -94,3 +92,15 @@ input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border
 #adminControls { margin-top: 2rem; border-top: 2px solid #e0cfbf; padding-top: 1rem; }
 .admin-item { background: #fff7ef; border-radius: 20px; padding: 0.8rem; margin: 0.5rem 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 .hidden { display: none; }
+/* Стили для горизонтальной галереи */
+.gallery-scroll {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    margin: 10px 0;
+}
+.gallery-scroll img {
+    height: 150px;
+    object-fit: cover;
+    border-radius: 12px;
+}
