@@ -1,4 +1,4 @@
-/* Базовые стили (оставляем как было, добавляем пару строк) */
+/* Базовые стили */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -55,12 +55,17 @@ body {
     box-shadow: 0 6px 14px rgba(0,0,0,0.05);
     border: 1px solid #f2e5d8;
     cursor: pointer;
-    transition: transform 0.1s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 20px rgba(0,0,0,0.1);
 }
 .card:active { transform: scale(0.99); }
 .card h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; color: #3b2a1e; }
 .card p { font-size: 0.9rem; color: #4f3f2e; margin: 0.25rem 0; }
-.card img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 20px; margin-top: 0.75rem; background: #f0e3d4; }
+.card img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 20px; margin-top: 0.75rem; background: #f0e3d4; transition: opacity 0.2s; }
+.card img:hover { opacity: 0.95; }
 button {
     background: #7b4a2e;
     border: none;
@@ -70,8 +75,12 @@ button {
     font-weight: 500;
     font-size: 0.8rem;
     cursor: pointer;
-    transition: 0.2s;
+    transition: background 0.2s, transform 0.1s;
     margin: 0.2rem;
+}
+button:hover {
+    background: #5e3a22;
+    transform: scale(1.02);
 }
 button:active { transform: scale(0.96); background: #5e3a22; }
 button.danger { background: #c27e5c; }
@@ -83,7 +92,7 @@ button.danger { background: #c27e5c; }
 .modal.hidden { display: none; }
 .modal-content {
     background: white; max-width: 500px; width: 90%; max-height: 80%; overflow-y: auto;
-    border-radius: 32px; padding: 1.5rem; animation: slideUp 0.3s;
+    border-radius: 32px; padding: 1.5rem; animation: slideUp 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
 }
 @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .close { float: right; font-size: 1.8rem; cursor: pointer; }
@@ -92,22 +101,37 @@ input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border
 #adminControls { margin-top: 2rem; border-top: 2px solid #e0cfbf; padding-top: 1rem; }
 .admin-item { background: #fff7ef; border-radius: 20px; padding: 0.8rem; margin: 0.5rem 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 .hidden { display: none; }
-/* Стили для горизонтальной галереи */
-.gallery-scroll {
-    display: flex;
-    overflow-x: auto;
-    gap: 10px;
-    margin: 10px 0;
-}
-.gallery-scroll img {
-    height: 150px;
-    object-fit: cover;
-    border-radius: 12px;
-}
+
+/* Стили для обложки в модальном окне */
 .museum-cover {
     width: 100%;
     max-height: 300px;
     object-fit: cover;
     border-radius: 20px;
     margin: 10px 0;
+}
+
+/* Логотип в шапке (иконка с подложкой) */
+.app-header h1 i {
+    background: rgba(255,255,255,0.2);
+    padding: 8px;
+    border-radius: 50%;
+    font-size: 1.6rem;
+    margin-right: 8px;
+    transition: 0.2s;
+}
+.app-header h1 i:hover {
+    background: rgba(255,255,255,0.3);
+    transform: rotate(5deg);
+}
+
+/* Дополнительные мелкие улучшения */
+#subscriptionsList button {
+    padding: 0.3rem 0.8rem;
+    font-size: 0.75rem;
+}
+.museum-visit-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
 }
