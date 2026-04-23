@@ -28,7 +28,7 @@ def init_db():
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
-        # Таблица музеев
+        # Таблица музеев (добавлено cover_photo_url)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +38,8 @@ def init_db():
                 lng REAL,
                 description TEXT,
                 contacts TEXT,
-                website TEXT
+                website TEXT,
+                cover_photo_url TEXT
             )
         ''')
         # Таблица фотографий музеев (галерея)
@@ -107,12 +108,12 @@ def load_seed_data(db):
     cursor = db.cursor()
     for museum in data['museums']:
         cursor.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
-              museum['description'], museum.get('contacts'), museum.get('website')))
+              museum['description'], museum.get('contacts'), museum.get('website'), museum.get('cover_photo')))
         museum_id = cursor.lastrowid
-        # Фото музея
+        # Фото галереи
         for photo_url in museum.get('photos', []):
             cursor.execute('INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (?, ?, ?)',
                            (museum_id, photo_url, 0))
@@ -252,20 +253,20 @@ def admin_museums():
     elif request.method == 'POST':
         data = request.json
         cursor = db.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website')))
+              data.get('contacts'), data.get('website'), data.get('cover_photo')))
         db.commit()
         return jsonify({'status': 'created', 'id': cursor.lastrowid})
     elif request.method == 'PUT':
         data = request.json
         db.execute('''
             UPDATE museums
-            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?
+            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?
             WHERE id=?
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data['id']))
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data['id']))
         db.commit()
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
@@ -274,7 +275,7 @@ def admin_museums():
         db.commit()
         return jsonify({'status': 'deleted'})
 
-# Фото музея (добавить, удалить, получить)
+# Фото музея (галерея)
 @app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
 @admin_required
 def admin_museum_photos(museum_id):
@@ -296,7 +297,7 @@ def admin_museum_photos(museum_id):
         db.commit()
         return jsonify({'status': 'deleted'})
 
-# Экспонаты (CRUD)
+# Экспонаты
 @app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_exhibits():
@@ -326,7 +327,7 @@ def admin_exhibits():
         db.commit()
         return jsonify({'status': 'deleted'})
 
-# События (CRUD)
+# События
 @app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_events():
