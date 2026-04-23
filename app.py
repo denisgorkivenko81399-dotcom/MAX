@@ -28,6 +28,7 @@ def init_db():
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
+        # Таблица музеев
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,10 +38,20 @@ def init_db():
                 lng REAL,
                 description TEXT,
                 contacts TEXT,
-                website TEXT,
-                photo_url TEXT
+                website TEXT
             )
         ''')
+        # Таблица фотографий музеев (галерея)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS museum_photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                museum_id INTEGER NOT NULL,
+                photo_url TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+        # Таблица экспонатов
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exhibits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +62,7 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица событий
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,9 +70,11 @@ def init_db():
                 title TEXT NOT NULL,
                 date TEXT,
                 description TEXT,
+                photo_url TEXT,
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица подписок
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscriptions (
                 user_id TEXT NOT NULL,
@@ -69,6 +83,7 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица посещений
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_visits (
                 user_id TEXT NOT NULL,
@@ -80,6 +95,7 @@ def init_db():
         ''')
         db.commit()
 
+        # Загрузка начальных данных, если музеев нет
         cursor.execute("SELECT COUNT(*) FROM museums")
         if cursor.fetchone()[0] == 0:
             load_seed_data(db)
@@ -91,18 +107,30 @@ def load_seed_data(db):
     cursor = db.cursor()
     for museum in data['museums']:
         cursor.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website, photo_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
-              museum['description'], museum.get('contacts'), museum.get('website'), museum.get('photo_url', '')))
+              museum['description'], museum.get('contacts'), museum.get('website')))
         museum_id = cursor.lastrowid
+        # Фото музея
+        for photo_url in museum.get('photos', []):
+            cursor.execute('INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (?, ?, ?)',
+                           (museum_id, photo_url, 0))
+        # Экспонаты
         for ex in museum.get('exhibits', []):
             cursor.execute('''
                 INSERT INTO exhibits (museum_id, name, description, photo_url)
                 VALUES (?, ?, ?, ?)
             ''', (museum_id, ex['name'], ex['description'], ex.get('photo_url', '')))
+        # События
+        for ev in museum.get('events', []):
+            cursor.execute('''
+                INSERT INTO events (museum_id, title, date, description, photo_url)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (museum_id, ev['title'], ev['date'], ev['description'], ev.get('photo_url', '')))
     db.commit()
 
+# ------------------- API для посетителей -------------------
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -112,6 +140,12 @@ def get_museums():
     db = get_db()
     museums = db.execute('SELECT * FROM museums').fetchall()
     return jsonify([dict(row) for row in museums])
+
+@app.route('/api/museum_photos/<int:museum_id>')
+def get_museum_photos(museum_id):
+    db = get_db()
+    photos = db.execute('SELECT photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
+    return jsonify([p['photo_url'] for p in photos])
 
 @app.route('/api/exhibits/<int:museum_id>')
 def get_exhibits(museum_id):
@@ -190,10 +224,14 @@ def get_subscriptions():
     if not user_id:
         return jsonify([])
     db = get_db()
-    subs = db.execute('SELECT museum_id FROM subscriptions WHERE user_id = ?', (user_id,)).fetchall()
-    return jsonify([row['museum_id'] for row in subs])
+    subs = db.execute('''
+        SELECT museums.id, museums.name FROM subscriptions
+        JOIN museums ON subscriptions.museum_id = museums.id
+        WHERE subscriptions.user_id = ?
+    ''', (user_id,)).fetchall()
+    return jsonify([dict(row) for row in subs])
 
-# ---------- Админ API ----------
+# ------------------- Админ API (требуют пароль) -------------------
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -213,21 +251,21 @@ def admin_museums():
         return jsonify([dict(row) for row in museums])
     elif request.method == 'POST':
         data = request.json
-        db.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website, photo_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        cursor = db.execute('''
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('photo_url')))
+              data.get('contacts'), data.get('website')))
         db.commit()
-        return jsonify({'status': 'created', 'id': db.execute('SELECT last_insert_rowid()').fetchone()[0]})
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
     elif request.method == 'PUT':
         data = request.json
         db.execute('''
             UPDATE museums
-            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, photo_url=?
+            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?
             WHERE id=?
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('photo_url'), data['id']))
+              data.get('contacts'), data.get('website'), data['id']))
         db.commit()
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
@@ -236,24 +274,80 @@ def admin_museums():
         db.commit()
         return jsonify({'status': 'deleted'})
 
-@app.route('/api/admin/events', methods=['POST', 'PUT', 'DELETE'])
+# Фото музея (добавить, удалить, получить)
+@app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
 @admin_required
-def admin_events():
+def admin_museum_photos(museum_id):
     db = get_db()
-    if request.method == 'POST':
+    if request.method == 'GET':
+        photos = db.execute('SELECT id, photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
+        return jsonify([dict(row) for row in photos])
+    elif request.method == 'POST':
         data = request.json
-        db.execute('''
-            INSERT INTO events (museum_id, title, date, description)
-            VALUES (?, ?, ?, ?)
-        ''', (data['museum_id'], data['title'], data['date'], data['description']))
+        photo_url = data.get('photo_url')
+        if not photo_url:
+            return jsonify({'error': 'No photo_url'}), 400
+        db.execute('INSERT INTO museum_photos (museum_id, photo_url) VALUES (?, ?)', (museum_id, photo_url))
         db.commit()
-        return jsonify({'status': 'created'})
+        return jsonify({'status': 'added'})
+    elif request.method == 'DELETE':
+        photo_id = request.json.get('photo_id')
+        db.execute('DELETE FROM museum_photos WHERE id = ? AND museum_id = ?', (photo_id, museum_id))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+# Экспонаты (CRUD)
+@app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_exhibits():
+    db = get_db()
+    if request.method == 'GET':
+        exhibits = db.execute('SELECT * FROM exhibits').fetchall()
+        return jsonify([dict(row) for row in exhibits])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO exhibits (museum_id, name, description, photo_url)
+            VALUES (?, ?, ?, ?)
+        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
     elif request.method == 'PUT':
         data = request.json
         db.execute('''
-            UPDATE events SET museum_id=?, title=?, date=?, description=?
+            UPDATE exhibits SET museum_id=?, name=?, description=?, photo_url=?
             WHERE id=?
-        ''', (data['museum_id'], data['title'], data['date'], data['description'], data['id']))
+        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        exhibit_id = request.json.get('id')
+        db.execute('DELETE FROM exhibits WHERE id = ?', (exhibit_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+# События (CRUD)
+@app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_events():
+    db = get_db()
+    if request.method == 'GET':
+        events = db.execute('SELECT * FROM events').fetchall()
+        return jsonify([dict(row) for row in events])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO events (museum_id, title, date, description, photo_url)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (data['museum_id'], data['title'], data['date'], data['description'], data.get('photo_url')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE events SET museum_id=?, title=?, date=?, description=?, photo_url=?
+            WHERE id=?
+        ''', (data['museum_id'], data['title'], data['date'], data['description'], data.get('photo_url'), data['id']))
         db.commit()
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
