@@ -8,7 +8,7 @@
       "description": "Крупнейший музей на Кавказе, основан в 1905 году. Богатые коллекции палеонтологии, археологии, этнографии.",
       "contacts": "+7 (8652) 26-42-23",
       "website": "https://www.stavmuseum.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Ставропольский+музей",
+      "cover_photo": "https://avatars.mds.yandex.net/get-altay/1524599/2a0000016ae303f8246b39da624ad6bea81f/orig",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Ставропольский+музей+1",
@@ -38,7 +38,7 @@
       "description": "Одно из старейших музейных учреждений Северного Кавказа, основано в 1903 году. Более 130 тысяч предметов.",
       "contacts": "+7 (8652) 26-26-14",
       "website": "https://pkm1903.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Пятигорский+музей",
+      "cover_photo": "https://www.pyatigorsk.online/content/afisha/image_814.jpg",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Пятигорский+музей+1"
@@ -67,7 +67,7 @@
       "description": "Музей расположен в здании Кисловодской крепости — памятнике XIX века. Более 89 тысяч экспонатов.",
       "contacts": "+7 (87937) 678-81",
       "website": "https://muskrep.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Кисловодский+музей",
+      "cover_photo": "https://императорскиймаршрут.рф/upload/iblock/404/404154e8661f4d00c590efbad96c1d36.jpg",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Кисловодский+музей+1"
@@ -96,7 +96,7 @@
       "description": "Музей в здании казначейства 1911 года. Экспозиции: природа, археология, воинская слава, события 1995 года.",
       "contacts": "+7 (86559) 7-39-31",
       "website": "https://budmuzeum.stv.muzkult.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Буденновский+музей",
+      "cover_photo": "https://cdn.culture.ru/images/4a2556d8-3c5e-56e6-9407-c354269f14e2",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Буденновский+музей+1"
@@ -125,7 +125,7 @@
       "description": "Музей имени Петра Фёдоровича Грибцова. Экспозиции о быте мещан, истории села, войне.",
       "contacts": "+7 (961) 462-26-58",
       "website": "https://blagmuzei.ucoz.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Благодарненский+музей",
+      "cover_photo": "https://cdn.culture.ru/images/14f34907-7ccc-5d3c-92ba-0cdf13701bb4",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Благодарненский+музей+1"
@@ -154,7 +154,7 @@
       "description": "Музей в селе Новоселицком. Экспозиции этнографии, зал Славы, более 2500 предметов.",
       "contacts": "+7 (865) 482-07-09",
       "website": "https://www.stavmuseum.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Новоселицкий+музей",
+      "cover_photo": "https://cdn.culture.ru/images/37caa59f-362e-57db-a4ed-3d751db672d5",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Новоселицкий+музей+1"
@@ -183,7 +183,7 @@
       "description": "Музей имени основателя Юрия Бельгарова. Реликвии 271-й стрелковой дивизии, живопись, техника.",
       "contacts": "+7 (8652) 26-42-23",
       "website": "https://gofmusey.ru/",
-      "cover_photo": "https://via.placeholder.com/800x450?text=Гофицкий+музей",
+      "cover_photo": "https://avatars.mds.yandex.net/i?id=6829db618ce5fe9976b6ff6ef3211312_l-5233717-images-thumbs&n=13",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Гофицкий+музей+1"
@@ -201,6 +201,27 @@
           "date": "2026-05-09",
           "description": "Встреча с ветеранами, показ экспонатов.",
           "photo_url": "https://via.placeholder.com/600x300?text=Урок+мужества"
+        }
+      ]
+    },
+    {
+      "name": "Комната памяти МБОУ СОШ №5 им. А.М.Дубинного г.Пятигорска",
+      "address": "г. Пятигорск, ул. Бештаугорская, 45а ",
+      "lat": 44.051698,
+      "lng": 43.043990,
+      "description": "История и люди – именно такое сочетание составляет разные экспозиции, бережно собранные несколькими поколениями педагогов школы, которая носит имя Анатолия Михайловича Дубинного. Музей в МБОУ СОШ №5 Пятигорска был открыт 30 июня 1999 года. За эти годы он успел стать неотъемлемым звеном единого образовательного процесса, обеспечивая дополнительное краеведческое просвещение, гражданско-патриотическое воспитание школьников. При этом в создании и работе музея активное участие принимали и принимают не только администрация школы и учителя, но и ученики, и их родители.",
+      "contacts": "+7 (8793) 98-53-82",
+      "website": "https://school05.gosuslugi.ru/",
+      "cover_photo": "https://pravda-kmv.ru/files/2020/11/muzejSOSH5.jpg",
+      "pushkin_card": "нет",
+      "photos": [
+        "https://via.placeholder.com/600x400?text=Гофицкий+музей+1"
+      ],
+      "exhibits": [
+        {
+          "name": "Торжественная поверка",
+          "description": "Торжественное мероприятие, посвященное 81-й годовщине победы в Великой Отечественной войне.",
+          "photo_url": "https://i.ytimg.com/vi/3_XOxH7UJ0Y/maxresdefault.jpg"
         }
       ]
     }
