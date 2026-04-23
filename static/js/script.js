@@ -63,12 +63,12 @@ async function setVisit(museumId, visited) {
     await loadVisits();
 }
 
-// Получение фотографий музея
+// Получение фотографий галереи
 async function getMuseumPhotos(museumId) {
     return await api(`/api/museum_photos/${museumId}`);
 }
 
-// Показать детальную карточку музея с галереей
+// Показать детальную карточку музея с обложкой и галереей
 async function showMuseumDetails(museumId) {
     const museum = museums.find(m => m.id === museumId);
     if (!museum) return;
@@ -80,18 +80,27 @@ async function showMuseumDetails(museumId) {
     const container = document.getElementById('museumDetailContent');
     if (!modal || !container) return;
     
-    // Галерея фото (горизонтальный скролл)
+    // Обложка (cover_photo) или первое фото из галереи как fallback
+    let coverHtml = '';
+    if (museum.cover_photo_url) {
+        coverHtml = `<img src="${museum.cover_photo_url}" style="width:100%; max-height:300px; object-fit:cover; border-radius:20px; margin:10px 0;">`;
+    } else if (photos.length) {
+        coverHtml = `<img src="${photos[0]}" style="width:100%; max-height:300px; object-fit:cover; border-radius:20px; margin:10px 0;">`;
+    } else {
+        coverHtml = `<div style="background: #f0e3d4; height:200px; display:flex; align-items:center; justify-content:center; border-radius:20px; margin:10px 0;">Нет фото</div>`;
+    }
+    
+    // Галерея (все фото, кроме обложки, если обложка совпадает с первым фото галереи – можно показать все)
     let galleryHtml = '';
     if (photos.length) {
         galleryHtml = `<div style="display: flex; overflow-x: auto; gap: 10px; margin: 10px 0;">
-            ${photos.map(p => `<img src="${p}" style="height: 150px; object-fit: cover; border-radius: 12px;">`).join('')}
+            ${photos.map(p => `<img src="${p}" style="height: 120px; object-fit: cover; border-radius: 12px;">`).join('')}
         </div>`;
-    } else {
-        galleryHtml = `<div style="background: #f0e3d4; height: 120px; display: flex; align-items: center; justify-content: center; border-radius: 20px; margin: 10px 0;">Нет фото</div>`;
     }
     
     container.innerHTML = `
         <h2>${escapeHtml(museum.name)}</h2>
+        ${coverHtml}
         ${galleryHtml}
         <p><i class="fas fa-map-marker-alt"></i> <strong>Адрес:</strong> ${escapeHtml(museum.address)}</p>
         <p><i class="fas fa-info-circle"></i> <strong>Описание:</strong><br>${escapeHtml(museum.description || '')}</p>
@@ -158,14 +167,15 @@ async function showExhibits(museumId) {
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
 }
 
-// Рендер главной (карточки музеев с первым фото)
+// Рендер главной (карточки музеев с обложкой)
 async function renderMain() {
     const container = document.getElementById('museums-list');
     if (!container) return;
     container.innerHTML = '';
     for (const m of museums) {
+        // Получаем фото галереи (для fallback, если нет обложки)
         const photos = await getMuseumPhotos(m.id);
-        const firstPhoto = photos.length ? photos[0] : '';
+        const coverPhoto = m.cover_photo_url || (photos.length ? photos[0] : '');
         const isSubscribed = subscriptions.some(s => s.id === m.id);
         const isVisited = visits.some(v => v.museum_id === m.id && v.visited === 1);
         const card = document.createElement('div');
@@ -177,7 +187,7 @@ async function renderMain() {
         });
         card.innerHTML = `
             <h3>${escapeHtml(m.name)}</h3>
-            ${firstPhoto ? `<img src="${firstPhoto}" alt="фото музея" style="max-height:180px; object-fit:cover;">` : '<div style="height:120px; background:#f0e3d4; display:flex; align-items:center; justify-content:center;">Нет фото</div>'}
+            ${coverPhoto ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px; object-fit:cover;">` : '<div style="height:120px; background:#f0e3d4; display:flex; align-items:center; justify-content:center;">Нет фото</div>'}
             <p>${escapeHtml(m.description || '').substring(0, 100)}${(m.description || '').length > 100 ? '...' : ''}</p>
             <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(m.address)}</p>
             <div>
@@ -221,7 +231,7 @@ async function renderMain() {
     });
 }
 
-// Яндекс.Карты
+// Яндекс.Карты (без изменений)
 function initYandexMap() {
     if (!ymapsReady || !window.ymaps) return;
     const mapElement = document.getElementById('map');
@@ -265,7 +275,7 @@ async function renderEvents() {
     }
 }
 
-// Паспорт: статистика + список подписок (без чекбоксов всех музеев)
+// Паспорт: статистика + список подписок
 async function renderPassport() {
     await loadVisits();
     const total = museums.length;
@@ -308,7 +318,7 @@ async function renderPassport() {
     }
 }
 
-// ------------------- Админ-панель (расширенная) -------------------
+// ------------------- Админ-панель (добавлено поле cover_photo) -------------------
 async function initAdmin() {
     const loginBtn = document.getElementById('adminLoginBtn');
     if (loginBtn) loginBtn.addEventListener('click', () => {
@@ -412,7 +422,6 @@ async function manageMuseumPhotos(museumId) {
         await api(`/api/admin/museum_photos/${museumId}`, { method: 'POST', body: JSON.stringify({ photo_url: newUrl }) });
         alert('Фото добавлено');
     } else {
-        // показать текущие фото и удалить?
         if (photos.length) {
             let msg = 'Текущие фото:\n';
             photos.forEach((p, idx) => { msg += `${idx+1}. ${p.photo_url}\n`; });
@@ -427,8 +436,7 @@ async function manageMuseumPhotos(museumId) {
             alert('Нет фото для удаления');
         }
     }
-    await loadAdminData(); // обновить списки (не обязательно, но для порядка)
-    // Обновляем главную и кэш
+    await loadAdminData();
     await loadMuseums();
     renderMain();
 }
@@ -443,7 +451,8 @@ function showMuseumForm(id = null) {
     const desc = prompt('Описание', museum?.description || '');
     const contacts = prompt('Контакты', museum?.contacts || '');
     const website = prompt('Сайт', museum?.website || '');
-    const data = { name, address, lat, lng, description: desc, contacts, website };
+    const coverPhoto = prompt('Ссылка на главное фото (обложка)', museum?.cover_photo_url || '');
+    const data = { name, address, lat, lng, description: desc, contacts, website, cover_photo: coverPhoto };
     if (id) {
         data.id = id;
         api('/api/admin/museums', { method: 'PUT', body: JSON.stringify(data) }).then(() => {
@@ -459,7 +468,6 @@ function showMuseumForm(id = null) {
 }
 
 function showExhibitForm(id = null) {
-    const exhibit = id ? null : null; // упростим, получим из списка потом
     const museumId = prompt('ID музея (посмотрите в админке список музеев)');
     if (!museumId) return;
     const name = prompt('Название экспоната');
@@ -476,7 +484,6 @@ function showExhibitForm(id = null) {
 }
 
 function showEventForm(id = null) {
-    const event = id ? null : null;
     const museumId = prompt('ID музея');
     if (!museumId) return;
     const title = prompt('Название события');
