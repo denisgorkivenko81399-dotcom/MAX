@@ -6,6 +6,7 @@ let events = [];
 let subscriptions = [];   // массив объектов {id, name}
 let visits = [];
 let ymapsReady = false;
+let museumPhotosCache = {}; // кэш фото для каждого музея { museumId: [urls] }
 
 // Получение user_id
 function getUserId() {
@@ -63,9 +64,18 @@ async function setVisit(museumId, visited) {
     await loadVisits();
 }
 
-// Получение фотографий галереи
+// Получение фотографий галереи с кэшированием
 async function getMuseumPhotos(museumId) {
-    return await api(`/api/museum_photos/${museumId}`);
+    if (museumPhotosCache[museumId]) return museumPhotosCache[museumId];
+    const photos = await api(`/api/museum_photos/${museumId}`);
+    museumPhotosCache[museumId] = photos;
+    return photos;
+}
+
+// Предзагрузка фото для всех музеев (вызывается один раз при старте)
+async function preloadAllPhotos() {
+    const promises = museums.map(m => getMuseumPhotos(m.id));
+    await Promise.all(promises);
 }
 
 // Показать детальную карточку музея
@@ -125,23 +135,42 @@ async function showMuseumDetails(museumId) {
         const isSub = subscriptions.some(s => s.id === museum.id);
         if (isSub) {
             await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
+            subscriptions = subscriptions.filter(s => s.id !== museum.id);
         } else {
             await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
+            subscriptions.push({ id: museum.id, name: museum.name });
         }
-        await loadSubscriptions();
-        renderMain();
-        renderPassport();
+        // Обновляем кнопку подписки в модалке
+        const subBtn = document.getElementById('detailSubscribeBtn');
+        if (subBtn) {
+            const isNowSub = subscriptions.some(s => s.id === museum.id);
+            subBtn.innerHTML = isNowSub ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
+        }
+        // Обновляем кнопку подписки на главной карточке (если она существует)
+        const mainCardSubscribeBtn = document.querySelector(`.subscribe-btn[data-id="${museum.id}"]`);
+        if (mainCardSubscribeBtn) {
+            const isNowSub = subscriptions.some(s => s.id === museum.id);
+            mainCardSubscribeBtn.innerHTML = isNowSub ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
+        }
+        renderPassport(); // обновляем паспорт (список подписок)
         const filter = document.getElementById('showOnlySubscribedEvents');
         if (filter && filter.checked) renderEvents();
-        showMuseumDetails(museum.id);
     });
     document.getElementById('detailVisitBtn')?.addEventListener('click', async () => {
         const btn = document.getElementById('detailVisitBtn');
         const currentlyVisited = btn.dataset.visited === 'true';
         await setVisit(museum.id, !currentlyVisited);
-        renderMain();
+        // Обновляем состояние посещения в модалке
+        const newVisited = !currentlyVisited;
+        btn.dataset.visited = newVisited;
+        btn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
+        // Обновляем кнопку на главной карточке
+        const mainCardVisitBtn = document.querySelector(`.visit-btn[data-id="${museum.id}"]`);
+        if (mainCardVisitBtn) {
+            mainCardVisitBtn.dataset.visited = newVisited;
+            mainCardVisitBtn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
+        }
         renderPassport();
-        showMuseumDetails(museum.id);
     });
 }
 
@@ -166,7 +195,7 @@ async function showExhibits(museumId) {
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
 }
 
-// Рендер главной
+// Рендер главной (один раз, с кэшированными фото)
 async function renderMain() {
     const container = document.getElementById('museums-list');
     if (!container) return;
@@ -197,6 +226,7 @@ async function renderMain() {
         `;
         container.appendChild(card);
     }
+    // Обработчики кнопок
     document.querySelectorAll('.exhibits-btn').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); showExhibits(parseInt(btn.dataset.id)); });
     });
@@ -207,11 +237,14 @@ async function renderMain() {
             const isSub = subscriptions.some(s => s.id === museumId);
             if (isSub) {
                 await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
+                subscriptions = subscriptions.filter(s => s.id !== museumId);
+                btn.innerHTML = '<i class="fas fa-bell"></i> Подписаться';
             } else {
                 await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
+                const museum = museums.find(m => m.id === museumId);
+                subscriptions.push({ id: museumId, name: museum.name });
+                btn.innerHTML = '<i class="fas fa-bell-slash"></i> Отписаться';
             }
-            await loadSubscriptions();
-            renderMain();
             renderPassport();
             const filter = document.getElementById('showOnlySubscribedEvents');
             if (filter && filter.checked) renderEvents();
@@ -223,7 +256,9 @@ async function renderMain() {
             const museumId = parseInt(btn.dataset.id);
             const currentlyVisited = btn.dataset.visited === 'true';
             await setVisit(museumId, !currentlyVisited);
-            renderMain();
+            const newVisited = !currentlyVisited;
+            btn.dataset.visited = newVisited;
+            btn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
             renderPassport();
         });
     });
@@ -302,9 +337,13 @@ async function renderPassport() {
             btn.addEventListener('click', async () => {
                 const museumId = parseInt(btn.dataset.id);
                 await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
-                await loadSubscriptions();
+                subscriptions = subscriptions.filter(s => s.id !== museumId);
                 renderPassport();
-                renderMain();
+                // Обновляем кнопку подписки на главной карточке
+                const mainCardSubscribeBtn = document.querySelector(`.subscribe-btn[data-id="${museumId}"]`);
+                if (mainCardSubscribeBtn) {
+                    mainCardSubscribeBtn.innerHTML = '<i class="fas fa-bell"></i> Подписаться';
+                }
                 const filter = document.getElementById('showOnlySubscribedEvents');
                 if (filter && filter.checked) renderEvents();
             });
@@ -359,6 +398,8 @@ async function loadAdminData() {
                 await api('/api/admin/museums', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
                 await loadAdminData();
                 await loadMuseums();
+                museumPhotosCache = {}; // очистить кэш
+                await preloadAllPhotos();
                 renderMain();
                 renderPassport();
                 if (window.ymaps && ymapsReady) initYandexMap();
@@ -414,6 +455,9 @@ async function manageMuseumPhotos(museumId) {
     if (newUrl) {
         await api(`/api/admin/museum_photos/${museumId}`, { method: 'POST', body: JSON.stringify({ photo_url: newUrl }) });
         alert('Фото добавлено');
+        // Обновляем кэш
+        delete museumPhotosCache[museumId];
+        await getMuseumPhotos(museumId);
     } else {
         if (photos.length) {
             let msg = 'Текущие фото:\n';
@@ -424,6 +468,8 @@ async function manageMuseumPhotos(museumId) {
                 const photoId = photos[num-1].id;
                 await api(`/api/admin/museum_photos/${museumId}`, { method: 'DELETE', body: JSON.stringify({ photo_id: photoId }) });
                 alert('Фото удалено');
+                delete museumPhotosCache[museumId];
+                await getMuseumPhotos(museumId);
             }
         } else {
             alert('Нет фото для удаления');
@@ -451,17 +497,28 @@ function showMuseumForm(id = null) {
         data.id = id;
         api('/api/admin/museums', { method: 'PUT', body: JSON.stringify(data) }).then(() => {
             loadAdminData();
-            loadMuseums().then(() => { renderMain(); renderPassport(); if(window.ymaps) initYandexMap(); });
+            loadMuseums().then(async () => {
+                museumPhotosCache = {};
+                await preloadAllPhotos();
+                renderMain();
+                renderPassport();
+                if(window.ymaps) initYandexMap();
+            });
         });
     } else {
         api('/api/admin/museums', { method: 'POST', body: JSON.stringify(data) }).then(() => {
             loadAdminData();
-            loadMuseums().then(() => { renderMain(); renderPassport(); if(window.ymaps) initYandexMap(); });
+            loadMuseums().then(async () => {
+                museumPhotosCache = {};
+                await preloadAllPhotos();
+                renderMain();
+                renderPassport();
+                if(window.ymaps) initYandexMap();
+            });
         });
     }
 }
 
-// НОВЫЕ ФУНКЦИИ ДЛЯ ВЫБОРА МУЗЕЯ ИЗ СПИСКА
 async function selectMuseumFromList() {
     const museumsList = await api('/api/museums');
     let message = "Список музеев:\n";
@@ -526,7 +583,6 @@ async function showEventForm(id = null) {
     await renderEvents();
 }
 
-// Вспомогательные функции
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -558,6 +614,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadMuseums();
     await loadSubscriptions();
     await loadVisits();
+    await preloadAllPhotos(); // предзагружаем фото всех музеев
     renderMain();
     renderPassport();
     initTabs();
