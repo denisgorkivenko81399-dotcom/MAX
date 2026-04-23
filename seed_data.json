@@ -8,6 +8,7 @@
       "description": "Крупнейший музей на Кавказе, основан в 1905 году. Богатые коллекции палеонтологии, археологии, этнографии.",
       "contacts": "+7 (8652) 26-42-23",
       "website": "https://www.stavmuseum.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Ставропольский+музей",
       "photos": [
         "https://via.placeholder.com/600x400?text=Ставропольский+музей+1",
         "https://via.placeholder.com/600x400?text=Ставропольский+музей+2"
@@ -36,6 +37,7 @@
       "description": "Одно из старейших музейных учреждений Северного Кавказа, основано в 1903 году. Более 130 тысяч предметов.",
       "contacts": "+7 (8652) 26-26-14",
       "website": "https://pkm1903.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Пятигорский+музей",
       "photos": [
         "https://via.placeholder.com/600x400?text=Пятигорский+музей+1"
       ],
@@ -63,6 +65,7 @@
       "description": "Музей расположен в здании Кисловодской крепости — памятнике XIX века. Более 89 тысяч экспонатов.",
       "contacts": "+7 (87937) 678-81",
       "website": "https://muskrep.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Кисловодский+музей",
       "photos": [
         "https://via.placeholder.com/600x400?text=Кисловодский+музей+1"
       ],
@@ -90,8 +93,9 @@
       "description": "Музей в здании казначейства 1911 года. Экспозиции: природа, археология, воинская слава, события 1995 года.",
       "contacts": "+7 (86559) 7-39-31",
       "website": "https://budmuzeum.stv.muzkult.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Буденновский+музей",
       "photos": [
-        "https://via.placeholder.com/600x400?text=Буденновский+музей"
+        "https://via.placeholder.com/600x400?text=Буденновский+музей+1"
       ],
       "exhibits": [
         {
@@ -117,8 +121,9 @@
       "description": "Музей имени Петра Фёдоровича Грибцова. Экспозиции о быте мещан, истории села, войне.",
       "contacts": "+7 (961) 462-26-58",
       "website": "https://blagmuzei.ucoz.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Благодарненский+музей",
       "photos": [
-        "https://via.placeholder.com/600x400?text=Благодарненский+музей"
+        "https://via.placeholder.com/600x400?text=Благодарненский+музей+1"
       ],
       "exhibits": [
         {
@@ -144,8 +149,9 @@
       "description": "Музей в селе Новоселицком. Экспозиции этнографии, зал Славы, более 2500 предметов.",
       "contacts": "+7 (865) 482-07-09",
       "website": "https://www.stavmuseum.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Новоселицкий+музей",
       "photos": [
-        "https://via.placeholder.com/600x400?text=Новоселицкий+музей"
+        "https://via.placeholder.com/600x400?text=Новоселицкий+музей+1"
       ],
       "exhibits": [
         {
@@ -171,8 +177,9 @@
       "description": "Музей имени основателя Юрия Бельгарова. Реликвии 271-й стрелковой дивизии, живопись, техника.",
       "contacts": "+7 (8652) 26-42-23",
       "website": "https://gofmusey.ru/",
+      "cover_photo": "https://via.placeholder.com/800x450?text=Гофицкий+музей",
       "photos": [
-        "https://via.placeholder.com/600x400?text=Гофицкий+музей"
+        "https://via.placeholder.com/600x400?text=Гофицкий+музей+1"
       ],
       "exhibits": [
         {
