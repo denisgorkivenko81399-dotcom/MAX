@@ -20,22 +20,18 @@
         <button class="tab-btn" data-tab="passport"><i class="fas fa-passport"></i> Мой паспорт</button>
     </div>
     <div class="tab-content">
-        <!-- Главная: карточки музеев -->
         <div id="main-tab" class="tab-pane active">
             <div id="museums-list" class="card-list"></div>
         </div>
-        <!-- Карта -->
         <div id="map-tab" class="tab-pane">
             <div id="map" style="width:100%; height:60vh;"></div>
         </div>
-        <!-- События -->
         <div id="events-tab" class="tab-pane">
             <div class="filter-bar">
                 <label><input type="checkbox" id="showOnlySubscribedEvents"> Только из подписанных музеев</label>
             </div>
             <div id="events-list" class="card-list"></div>
         </div>
-        <!-- Мой паспорт -->
         <div id="passport-tab" class="tab-pane">
             <div id="passport-info"></div>
             <div id="adminPanel">
@@ -48,6 +44,14 @@
                     <h3>Управление музеями</h3>
                     <button id="addMuseumBtn"><i class="fas fa-plus"></i> Добавить музей</button>
                     <div id="museumsAdminList"></div>
+                    
+                    <h3>Управление фотографиями музеев</h3>
+                    <div id="museumPhotosAdminList"></div>
+                    
+                    <h3>Управление экспонатами</h3>
+                    <button id="addExhibitBtn"><i class="fas fa-plus"></i> Добавить экспонат</button>
+                    <div id="exhibitsAdminList"></div>
+                    
                     <h3>Управление событиями</h3>
                     <button id="addEventBtn"><i class="fas fa-plus"></i> Добавить событие</button>
                     <div id="eventsAdminList"></div>
@@ -63,7 +67,7 @@
             <div id="exhibitsListModal"></div>
         </div>
     </div>
-    <!-- НОВОЕ: модальное окно для детальной карточки музея -->
+    <!-- Модальное окно для деталей музея -->
     <div id="museumModal" class="modal hidden">
         <div class="modal-content" style="max-width: 600px;">
             <span class="close">&times;</span>
