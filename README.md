@@ -50,3 +50,5 @@
    ```bash
    git clone https://github.com/denisgorkivenko81399-dotcom/max-museums-app.git
    cd max-museums-app
+3. Установите зависимости:
+   pip install -r requirements.txt
