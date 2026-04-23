@@ -9,6 +9,7 @@
       "contacts": "+7 (8652) 26-42-23",
       "website": "https://www.stavmuseum.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Ставропольский+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Ставропольский+музей+1",
         "https://via.placeholder.com/600x400?text=Ставропольский+музей+2"
@@ -38,6 +39,7 @@
       "contacts": "+7 (8652) 26-26-14",
       "website": "https://pkm1903.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Пятигорский+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Пятигорский+музей+1"
       ],
@@ -66,6 +68,7 @@
       "contacts": "+7 (87937) 678-81",
       "website": "https://muskrep.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Кисловодский+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Кисловодский+музей+1"
       ],
@@ -94,6 +97,7 @@
       "contacts": "+7 (86559) 7-39-31",
       "website": "https://budmuzeum.stv.muzkult.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Буденновский+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Буденновский+музей+1"
       ],
@@ -122,6 +126,7 @@
       "contacts": "+7 (961) 462-26-58",
       "website": "https://blagmuzei.ucoz.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Благодарненский+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Благодарненский+музей+1"
       ],
@@ -150,6 +155,7 @@
       "contacts": "+7 (865) 482-07-09",
       "website": "https://www.stavmuseum.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Новоселицкий+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Новоселицкий+музей+1"
       ],
@@ -178,6 +184,7 @@
       "contacts": "+7 (8652) 26-42-23",
       "website": "https://gofmusey.ru/",
       "cover_photo": "https://via.placeholder.com/800x450?text=Гофицкий+музей",
+      "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Гофицкий+музей+1"
       ],
