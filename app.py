@@ -28,7 +28,7 @@ def init_db():
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
-        # Таблица музеев (добавлено cover_photo_url)
+        # Таблица музеев (добавлено cover_photo_url и pushkin_card)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +39,8 @@ def init_db():
                 description TEXT,
                 contacts TEXT,
                 website TEXT,
-                cover_photo_url TEXT
+                cover_photo_url TEXT,
+                pushkin_card TEXT DEFAULT 'нет'
             )
         ''')
         # Таблица фотографий музеев (галерея)
@@ -108,10 +109,10 @@ def load_seed_data(db):
     cursor = db.cursor()
     for museum in data['museums']:
         cursor.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
-              museum['description'], museum.get('contacts'), museum.get('website'), museum.get('cover_photo')))
+              museum['description'], museum.get('contacts'), museum.get('website'), museum.get('cover_photo'), museum.get('pushkin_card', 'нет')))
         museum_id = cursor.lastrowid
         # Фото галереи
         for photo_url in museum.get('photos', []):
@@ -253,20 +254,20 @@ def admin_museums():
     elif request.method == 'POST':
         data = request.json
         cursor = db.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('cover_photo')))
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет')))
         db.commit()
         return jsonify({'status': 'created', 'id': cursor.lastrowid})
     elif request.method == 'PUT':
         data = request.json
         db.execute('''
             UPDATE museums
-            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?
+            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?, pushkin_card=?
             WHERE id=?
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('cover_photo'), data['id']))
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет'), data['id']))
         db.commit()
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
