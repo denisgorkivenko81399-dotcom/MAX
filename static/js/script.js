@@ -314,7 +314,7 @@ async function renderPassport() {
     }
 }
 
-// ------------------- Админ-панель -------------------
+// ------------------- Админ-панель (расширенная) -------------------
 async function initAdmin() {
     const loginBtn = document.getElementById('adminLoginBtn');
     if (loginBtn) loginBtn.addEventListener('click', () => {
@@ -461,39 +461,72 @@ function showMuseumForm(id = null) {
     }
 }
 
-function showExhibitForm(id = null) {
-    const museumId = prompt('ID музея (посмотрите в админке список музеев)');
-    if (!museumId) return;
+// НОВЫЕ ФУНКЦИИ ДЛЯ ВЫБОРА МУЗЕЯ ИЗ СПИСКА
+async function selectMuseumFromList() {
+    const museumsList = await api('/api/museums');
+    let message = "Список музеев:\n";
+    museumsList.forEach(m => {
+        message += `${m.id} - ${m.name}\n`;
+    });
+    message += "\nВведите ID музея:";
+    const id = prompt(message);
+    if (id && !isNaN(parseInt(id))) {
+        return parseInt(id);
+    } else {
+        alert("Неверный ID");
+        return null;
+    }
+}
+
+async function showExhibitForm(id = null) {
+    let museumId;
+    if (id === null) {
+        museumId = await selectMuseumFromList();
+        if (!museumId) return;
+    } else {
+        museumId = await selectMuseumFromList();
+        if (!museumId) return;
+    }
     const name = prompt('Название экспоната');
     if (!name) return;
     const desc = prompt('Описание');
     const photoUrl = prompt('Фото URL');
-    const data = { museum_id: parseInt(museumId), name, description: desc, photo_url: photoUrl };
+    const data = { museum_id: museumId, name, description: desc, photo_url: photoUrl };
     if (id) {
         data.id = id;
-        api('/api/admin/exhibits', { method: 'PUT', body: JSON.stringify(data) }).then(() => loadAdminData());
+        await api('/api/admin/exhibits', { method: 'PUT', body: JSON.stringify(data) });
     } else {
-        api('/api/admin/exhibits', { method: 'POST', body: JSON.stringify(data) }).then(() => loadAdminData());
+        await api('/api/admin/exhibits', { method: 'POST', body: JSON.stringify(data) });
     }
+    await loadAdminData();
 }
 
-function showEventForm(id = null) {
-    const museumId = prompt('ID музея');
-    if (!museumId) return;
+async function showEventForm(id = null) {
+    let museumId;
+    if (id === null) {
+        museumId = await selectMuseumFromList();
+        if (!museumId) return;
+    } else {
+        museumId = await selectMuseumFromList();
+        if (!museumId) return;
+    }
     const title = prompt('Название события');
     if (!title) return;
     const date = prompt('Дата (YYYY-MM-DD)');
     const desc = prompt('Описание');
     const photoUrl = prompt('Фото URL');
-    const data = { museum_id: parseInt(museumId), title, date, description: desc, photo_url: photoUrl };
+    const data = { museum_id: museumId, title, date, description: desc, photo_url: photoUrl };
     if (id) {
         data.id = id;
-        api('/api/admin/events', { method: 'PUT', body: JSON.stringify(data) }).then(() => { loadAdminData(); renderEvents(); });
+        await api('/api/admin/events', { method: 'PUT', body: JSON.stringify(data) });
     } else {
-        api('/api/admin/events', { method: 'POST', body: JSON.stringify(data) }).then(() => { loadAdminData(); renderEvents(); });
+        await api('/api/admin/events', { method: 'POST', body: JSON.stringify(data) });
     }
+    await loadAdminData();
+    await renderEvents();
 }
 
+// Вспомогательные функции
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
