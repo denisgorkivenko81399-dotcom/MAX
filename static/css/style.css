@@ -135,3 +135,19 @@ input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border
     height: 20px;
     cursor: pointer;
 }
+/* Стиль для ссылки маршрута */
+.route-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    color: #7b4a2e;
+    text-decoration: none;
+    font-weight: 500;
+}
+.route-link:hover {
+    text-decoration: underline;
+}
+
+/* Кнопка маршрута на карте (если понадобится) */
+.ymaps-2-1-79-balloon__content a {
+    color: #7b4a2e;
+}
