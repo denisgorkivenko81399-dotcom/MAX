@@ -28,7 +28,7 @@ def init_db():
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
-        # Таблица музеев (добавлено cover_photo_url и pushkin_card)
+        # Таблица музеев
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +43,6 @@ def init_db():
                 pushkin_card TEXT DEFAULT 'нет'
             )
         ''')
-        # Таблица фотографий музеев (галерея)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museum_photos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +52,6 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
-        # Таблица экспонатов
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exhibits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +62,6 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
-        # Таблица событий
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +73,6 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
-        # Таблица подписок
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscriptions (
                 user_id TEXT NOT NULL,
@@ -85,7 +81,6 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
-        # Таблица посещений
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_visits (
                 user_id TEXT NOT NULL,
@@ -97,7 +92,6 @@ def init_db():
         ''')
         db.commit()
 
-        # Загрузка начальных данных, если музеев нет
         cursor.execute("SELECT COUNT(*) FROM museums")
         if cursor.fetchone()[0] == 0:
             load_seed_data(db)
@@ -114,17 +108,14 @@ def load_seed_data(db):
         ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
               museum['description'], museum.get('contacts'), museum.get('website'), museum.get('cover_photo'), museum.get('pushkin_card', 'нет')))
         museum_id = cursor.lastrowid
-        # Фото галереи
         for photo_url in museum.get('photos', []):
             cursor.execute('INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (?, ?, ?)',
                            (museum_id, photo_url, 0))
-        # Экспонаты
         for ex in museum.get('exhibits', []):
             cursor.execute('''
                 INSERT INTO exhibits (museum_id, name, description, photo_url)
                 VALUES (?, ?, ?, ?)
             ''', (museum_id, ex['name'], ex['description'], ex.get('photo_url', '')))
-        # События
         for ev in museum.get('events', []):
             cursor.execute('''
                 INSERT INTO events (museum_id, title, date, description, photo_url)
@@ -233,7 +224,7 @@ def get_subscriptions():
     ''', (user_id,)).fetchall()
     return jsonify([dict(row) for row in subs])
 
-# ------------------- Админ API (требуют пароль) -------------------
+# ------------------- Админ API -------------------
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -276,7 +267,6 @@ def admin_museums():
         db.commit()
         return jsonify({'status': 'deleted'})
 
-# Фото музея (галерея)
 @app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
 @admin_required
 def admin_museum_photos(museum_id):
@@ -298,7 +288,6 @@ def admin_museum_photos(museum_id):
         db.commit()
         return jsonify({'status': 'deleted'})
 
-# Экспонаты
 @app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_exhibits():
@@ -328,7 +317,6 @@ def admin_exhibits():
         db.commit()
         return jsonify({'status': 'deleted'})
 
-# События
 @app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_events():
@@ -357,6 +345,24 @@ def admin_events():
         db.execute('DELETE FROM events WHERE id = ?', (event_id,))
         db.commit()
         return jsonify({'status': 'deleted'})
+
+# ---------- НОВЫЙ ОБРАБОТЧИК ДЛЯ БОТА ----------
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.json
+    # Проверяем, что есть сообщение
+    if 'message' in data and 'chat' in data['message']:
+        chat_id = data['message']['chat']['id']
+        # Ответное сообщение
+        reply_text = "Добро пожаловать! Наше приложение для малых музеев Ставрополья доступно по ссылке:\nhttps://max-museums-app.onrender.com\n\nВы можете найти музеи на карте, подписаться на события и отметить посещения."
+        return jsonify({
+            'method': 'sendMessage',
+            'chat_id': chat_id,
+            'text': reply_text
+        })
+    else:
+        # Если что-то не так, просто ничего не отвечаем
+        return jsonify({})
 
 if __name__ == '__main__':
     if not os.path.exists(DATABASE):
