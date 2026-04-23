@@ -15,7 +15,7 @@
 
 ## Ссылка на репозиторий GitHub
 
-[https://github.com/denisgorkivenko81399-dotcom/max-museums-app](https://github.com/denisgorkivenko81399-dotcom/max-museums-app)  
+[https://github.com/denisgorkivenko81399-dotcom/MAX.git]  
 
 ---
 
