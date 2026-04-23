@@ -51,4 +51,9 @@
    git clone https://github.com/denisgorkivenko81399-dotcom/max-museums-app.git
    cd max-museums-app
 3. Установите зависимости:
+    ```bash
    pip install -r requirements.txt
+4. Запустите приложение:
+    ```bash
+    python app.py
+5.
