@@ -6,7 +6,7 @@ let events = [];
 let subscriptions = [];   // массив объектов {id, name}
 let visits = [];
 let ymapsReady = false;
-let museumPhotosCache = {}; // кэш фото для каждого музея { museumId: [urls] }
+let museumPhotosCache = {}; // кэш фото для каждого музея
 
 // Получение user_id
 function getUserId() {
@@ -72,19 +72,21 @@ async function getMuseumPhotos(museumId) {
     return photos;
 }
 
-// Предзагрузка фото для всех музеев (вызывается один раз при старте)
+// Предзагрузка фото для всех музеев
 async function preloadAllPhotos() {
     const promises = museums.map(m => getMuseumPhotos(m.id));
     await Promise.all(promises);
 }
 
-// Показать детальную карточку музея
+// Показать детальную карточку музея с маршрутом
 async function showMuseumDetails(museumId) {
     const museum = museums.find(m => m.id === museumId);
     if (!museum) return;
     const photos = await getMuseumPhotos(museumId);
     const isSubscribed = subscriptions.some(s => s.id === museum.id);
     const isVisited = visits.some(v => v.museum_id === museum.id && v.visited === 1);
+    // Ссылка на маршрут в Яндекс.Картах
+    const routeLink = `https://yandex.ru/maps/?rtext=~${museum.lat},${museum.lng}&rtt=auto`;
     
     const modal = document.getElementById('museumModal');
     const container = document.getElementById('museumDetailContent');
@@ -115,6 +117,7 @@ async function showMuseumDetails(museumId) {
         <p><i class="fas fa-phone"></i> <strong>Контакты:</strong> ${escapeHtml(museum.contacts || 'не указаны')}</p>
         ${museum.website ? `<p><i class="fas fa-globe"></i> <strong>Сайт:</strong> <a href="${museum.website}" target="_blank">${escapeHtml(museum.website)}</a></p>` : ''}
         ${museum.pushkin_card === 'да' ? '<p><i class="fas fa-id-card"></i> <strong>Пушкинская карта:</strong> доступно</p>' : ''}
+        <p><i class="fas fa-directions"></i> <strong>Как добраться:</strong> <a href="${routeLink}" target="_blank" style="color:#7b4a2e;">Проложить маршрут в Яндекс.Картах</a></p>
         <hr>
         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
             <button id="detailExhibitsBtn" data-id="${museum.id}"><i class="fas fa-search"></i> Экспонаты</button>
@@ -140,19 +143,17 @@ async function showMuseumDetails(museumId) {
             await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museum.id }) });
             subscriptions.push({ id: museum.id, name: museum.name });
         }
-        // Обновляем кнопку подписки в модалке
         const subBtn = document.getElementById('detailSubscribeBtn');
         if (subBtn) {
             const isNowSub = subscriptions.some(s => s.id === museum.id);
             subBtn.innerHTML = isNowSub ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
         }
-        // Обновляем кнопку подписки на главной карточке (если она существует)
         const mainCardSubscribeBtn = document.querySelector(`.subscribe-btn[data-id="${museum.id}"]`);
         if (mainCardSubscribeBtn) {
             const isNowSub = subscriptions.some(s => s.id === museum.id);
             mainCardSubscribeBtn.innerHTML = isNowSub ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
         }
-        renderPassport(); // обновляем паспорт (список подписок)
+        renderPassport();
         const filter = document.getElementById('showOnlySubscribedEvents');
         if (filter && filter.checked) renderEvents();
     });
@@ -160,11 +161,9 @@ async function showMuseumDetails(museumId) {
         const btn = document.getElementById('detailVisitBtn');
         const currentlyVisited = btn.dataset.visited === 'true';
         await setVisit(museum.id, !currentlyVisited);
-        // Обновляем состояние посещения в модалке
         const newVisited = !currentlyVisited;
         btn.dataset.visited = newVisited;
         btn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
-        // Обновляем кнопку на главной карточке
         const mainCardVisitBtn = document.querySelector(`.visit-btn[data-id="${museum.id}"]`);
         if (mainCardVisitBtn) {
             mainCardVisitBtn.dataset.visited = newVisited;
@@ -195,7 +194,7 @@ async function showExhibits(museumId) {
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
 }
 
-// Рендер главной (один раз, с кэшированными фото)
+// Рендер главной
 async function renderMain() {
     const container = document.getElementById('museums-list');
     if (!container) return;
@@ -226,7 +225,6 @@ async function renderMain() {
         `;
         container.appendChild(card);
     }
-    // Обработчики кнопок
     document.querySelectorAll('.exhibits-btn').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); showExhibits(parseInt(btn.dataset.id)); });
     });
@@ -264,7 +262,7 @@ async function renderMain() {
     });
 }
 
-// Яндекс.Карты
+// Яндекс.Карты с маршрутом в балуне
 function initYandexMap() {
     if (!ymapsReady || !window.ymaps) return;
     const map = new ymaps.Map('map', {
@@ -274,9 +272,12 @@ function initYandexMap() {
     });
     museums.forEach(m => {
         if (m.lat && m.lng) {
+            const routeLink = `https://yandex.ru/maps/?rtext=~${m.lat},${m.lng}&rtt=auto`;
             const placemark = new ymaps.Placemark([m.lat, m.lng], {
                 balloonContentHeader: `<b>${escapeHtml(m.name)}</b>`,
-                balloonContentBody: `<p>${escapeHtml(m.address)}</p><button onclick="window.showExhibitsFromMap(${m.id})">Экспонаты</button>`
+                balloonContentBody: `<p>${escapeHtml(m.address)}</p>
+                                     <a href="${routeLink}" target="_blank">🚗 Проложить маршрут</a><br>
+                                     <button onclick="window.showExhibitsFromMap(${m.id})">Экспонаты</button>`
             });
             map.geoObjects.add(placemark);
         }
@@ -339,7 +340,6 @@ async function renderPassport() {
                 await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
                 subscriptions = subscriptions.filter(s => s.id !== museumId);
                 renderPassport();
-                // Обновляем кнопку подписки на главной карточке
                 const mainCardSubscribeBtn = document.querySelector(`.subscribe-btn[data-id="${museumId}"]`);
                 if (mainCardSubscribeBtn) {
                     mainCardSubscribeBtn.innerHTML = '<i class="fas fa-bell"></i> Подписаться';
@@ -353,7 +353,7 @@ async function renderPassport() {
     }
 }
 
-// ------------------- Админ-панель (расширенная) -------------------
+// ------------------- Админ-панель -------------------
 async function initAdmin() {
     const loginBtn = document.getElementById('adminLoginBtn');
     if (loginBtn) loginBtn.addEventListener('click', () => {
@@ -398,7 +398,7 @@ async function loadAdminData() {
                 await api('/api/admin/museums', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
                 await loadAdminData();
                 await loadMuseums();
-                museumPhotosCache = {}; // очистить кэш
+                museumPhotosCache = {};
                 await preloadAllPhotos();
                 renderMain();
                 renderPassport();
@@ -455,7 +455,6 @@ async function manageMuseumPhotos(museumId) {
     if (newUrl) {
         await api(`/api/admin/museum_photos/${museumId}`, { method: 'POST', body: JSON.stringify({ photo_url: newUrl }) });
         alert('Фото добавлено');
-        // Обновляем кэш
         delete museumPhotosCache[museumId];
         await getMuseumPhotos(museumId);
     } else {
@@ -614,7 +613,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadMuseums();
     await loadSubscriptions();
     await loadVisits();
-    await preloadAllPhotos(); // предзагружаем фото всех музеев
+    await preloadAllPhotos();
     renderMain();
     renderPassport();
     initTabs();
