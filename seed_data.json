@@ -18,7 +18,7 @@
         {
           "name": "Скелет южного слона",
           "description": "Один из двух полных скелетов южного слона, найденных в мире. Возраст 1,5 млн лет.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Скелет+слона"
+          "photo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Mammuthus_meridionalis_Saint_Petersburg.JPG/1280px-Mammuthus_meridionalis_Saint_Petersburg.JPG"
         }
       ],
       "events": [
@@ -47,7 +47,7 @@
         {
           "name": "Череп южного слона",
           "description": "Уникальный череп южного слона, найденный в окрестностях Пятигорска.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Череп+слона"
+          "photo_url": "https://photo.foto-planeta.com/view/1/1/1/7/4/pyatigorsk-1117423.jpg"
         }
       ],
       "events": [
@@ -67,7 +67,7 @@
       "description": "Музей расположен в здании Кисловодской крепости — памятнике XIX века. Более 89 тысяч экспонатов.",
       "contacts": "+7 (87937) 678-81",
       "website": "https://muskrep.ru/",
-      "cover_photo": "https://xn--80aaaigemgb2bumlbg6a5j.xn--p1ai/upload/iblock/404/404154e8661f4d00c590efbad96c1d36.jpg",
+      "cover_photo": "https://avatars.mds.yandex.net/i?id=843b94495d60dfeeb4ac9e2debf76cb0_l-5235020-images-thumbs&n=13",
       "pushkin_card": "да",
       "photos": [
         "https://via.placeholder.com/600x400?text=Кисловодский+музей+1"
@@ -219,9 +219,9 @@
       ],
       "exhibits": [
         {
-          "name": "Торжественная поверка",
-          "description": "Торжественное мероприятие, посвященное 81-й годовщине победы в Великой Отечественной войне.",
-          "photo_url": "https://i.ytimg.com/vi/3_XOxH7UJ0Y/maxresdefault.jpg"
+          "name": "Парта героя",
+          "description": "Наша школа активно поддерживает инициативу всероссийского проекта "Парта героя", стремясь прививать детям чувство гордости за исторические подвиги наших предков и современников. Здесь мы будем размещать информацию обо всех мероприятиях, проводимых в рамках проекта, открытия новых парт героев и установки мемориальных досок",
+          "photo_url": "https://fonar.tv/uploads/img/2022/05/10/28c7bf8f1a320173c812807eef6a716a.jpg"
         }
       ],
       "events": []
