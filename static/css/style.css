@@ -357,3 +357,47 @@ input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border
     .modal-content { max-width: 95%; padding: 1rem; }
     .calendar-table td { padding: 0.2rem; font-size: 0.8rem; }
 }
+/* Экспонат дня */
+#today-exhibit h3 {
+    color: #7b4a2e;
+}
+#today-exhibit button {
+    margin-top: 10px;
+}
+
+/* Лента образовательных постов */
+.educational-post .post-meta {
+    color: #8a7a6a;
+    font-size: 0.8rem;
+}
+.educational-post .post-museum {
+    color: #5e4b3a;
+    font-size: 0.9rem;
+}
+.educational-post .post-content {
+    margin-top: 0.5rem;
+    white-space: pre-wrap;
+}
+
+/* Фильтр по темам */
+.filter-bar {
+    background: white;
+    padding: 0.5rem 1rem;
+    border-radius: 40px;
+    margin-bottom: 1rem;
+    display: inline-block;
+}
+
+/* Избранное в модалке экспонатов */
+.fav-btn {
+    background: #f0e3d4;
+    color: #2c2418;
+}
+.fav-btn:hover {
+    background: #dccbbc;
+}
+
+/* Адаптив для админ-панели */
+.admin-table-wrapper {
+    overflow-x: auto;
+}
