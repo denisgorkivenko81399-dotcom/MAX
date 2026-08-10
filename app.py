@@ -24,11 +24,15 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-def init_db():
+# ------------------- ФУНКЦИЯ МИГРАЦИИ (безопасное обновление БД) -------------------
+def migrate_db():
+    """Создаёт отсутствующие таблицы и добавляет новые поля в существующие."""
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
-        # --- Существующие таблицы (с добавлением новых полей) ---
+
+        # --- 1. Проверяем и создаём основные таблицы, если их нет ---
+        # Таблица museums
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,17 +47,7 @@ def init_db():
                 pushkin_card TEXT DEFAULT 'нет'
             )
         ''')
-        # Добавляем поле time в events, если его нет
-        cursor.execute("PRAGMA table_info(events)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'time' not in columns:
-            cursor.execute('ALTER TABLE events ADD COLUMN time TEXT')
-        # Добавляем поле subject в exhibits
-        cursor.execute("PRAGMA table_info(exhibits)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'subject' not in columns:
-            cursor.execute('ALTER TABLE exhibits ADD COLUMN subject TEXT')
-
+        # Таблица museum_photos
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museum_photos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +57,7 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица exhibits
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exhibits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +69,7 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица events
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,6 +82,7 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица subscriptions
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscriptions (
                 user_id TEXT NOT NULL,
@@ -94,6 +91,7 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+        # Таблица user_visits
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_visits (
                 user_id TEXT NOT NULL,
@@ -104,8 +102,8 @@ def init_db():
             )
         ''')
 
-        # --- НОВЫЕ ТАБЛИЦЫ ДЛЯ ФУНКЦИЙ ---
-        # 1. Сохранённые события пользователя (напоминания)
+        # --- 2. Новые таблицы (если их нет, создаём) ---
+        # user_events
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +114,7 @@ def init_db():
                 UNIQUE(user_id, event_id)
             )
         ''')
-        # 2. Экскурсии (образовательный модуль)
+        # excursions
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS excursions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,7 +123,7 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # 3. Элементы экскурсий (связь экспонатов с экскурсией)
+        # excursion_items
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS excursion_items (
                 excursion_id INTEGER NOT NULL,
@@ -136,7 +134,7 @@ def init_db():
                 PRIMARY KEY (excursion_id, exhibit_id)
             )
         ''')
-        # 4. Отзывы
+        # reviews
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,12 +148,25 @@ def init_db():
             )
         ''')
 
+        # --- 3. Добавление новых полей в существующие таблицы (если их нет) ---
+        # Добавляем поле 'time' в events
+        cursor.execute("PRAGMA table_info(events)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'time' not in columns:
+            cursor.execute('ALTER TABLE events ADD COLUMN time TEXT')
+        # Добавляем поле 'subject' в exhibits
+        cursor.execute("PRAGMA table_info(exhibits)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'subject' not in columns:
+            cursor.execute('ALTER TABLE exhibits ADD COLUMN subject TEXT')
+
         db.commit()
 
-        # Загрузка начальных данных, если музеев нет
+        # --- 4. Загрузка начальных данных, если таблица музеев пуста ---
         cursor.execute("SELECT COUNT(*) FROM museums")
         if cursor.fetchone()[0] == 0:
             load_seed_data(db)
+
         db.commit()
 
 def load_seed_data(db):
@@ -185,17 +196,15 @@ def load_seed_data(db):
             ''', (museum_id, ev['title'], ev['date'], ev.get('time', ''), ev.get('description', ''), ev.get('photo_url', '')))
     db.commit()
 
-# ------------------- API для посетителей (существующие и новые) -------------------
-
+# ------------------- API для посетителей -------------------
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/admin')
 def admin_panel():
-    return render_template('admin.html')   # пока не создан, но мы позже добавим
+    return render_template('admin.html')
 
-# --- Существующие эндпоинты (без изменений) ---
 @app.route('/api/museums')
 def get_museums():
     db = get_db()
@@ -292,8 +301,7 @@ def get_subscriptions():
     ''', (user_id,)).fetchall()
     return jsonify([dict(row) for row in subs])
 
-# ------------------- НОВЫЕ ЭНДПОИНТЫ ДЛЯ КАЛЕНДАРЯ И НАПОМИНАНИЙ -------------------
-
+# ------------------- НОВЫЕ ЭНДПОИНТЫ -------------------
 @app.route('/api/events/month')
 def get_events_month():
     year = request.args.get('year', type=int)
@@ -312,7 +320,7 @@ def get_events_month():
 
 @app.route('/api/events/date')
 def get_events_by_date():
-    date = request.args.get('date')  # формат YYYY-MM-DD
+    date = request.args.get('date')
     if not date:
         return jsonify({'error': 'Missing date'}), 400
     db = get_db()
@@ -354,8 +362,6 @@ def get_user_events():
         ORDER BY events.date, events.time
     ''', (user_id,)).fetchall()
     return jsonify([dict(row) for row in events])
-
-# ------------------- НОВЫЕ ЭНДПОИНТЫ ДЛЯ ОБРАЗОВАТЕЛЬНОГО МОДУЛЯ -------------------
 
 @app.route('/api/exhibits/subject')
 def get_exhibits_by_subject():
@@ -416,10 +422,22 @@ def get_excursion(excursion_id):
 
 @app.route('/api/excursions/<int:excursion_id>/share')
 def share_excursion(excursion_id):
-    # Генерируем ссылку для просмотра экскурсии без авторизации
     return jsonify({'url': f'/excursion/{excursion_id}'})
 
-# ------------------- НОВЫЕ ЭНДПОИНТЫ ДЛЯ ОТЗЫВОВ -------------------
+@app.route('/excursion/<int:excursion_id>')
+def view_excursion(excursion_id):
+    db = get_db()
+    items = db.execute('''
+        SELECT exhibits.*, museums.name as museum_name FROM excursion_items
+        JOIN exhibits ON excursion_items.exhibit_id = exhibits.id
+        JOIN museums ON exhibits.museum_id = museums.id
+        WHERE excursion_items.excursion_id = ?
+    ''', (excursion_id,)).fetchall()
+    html = '<html><body><h1>Экскурсия</h1><ul>'
+    for item in items:
+        html += f'<li><strong>{item["name"]}</strong> – {item["museum_name"]}<br>{item["description"]}</li>'
+    html += '</ul></body></html>'
+    return html
 
 @app.route('/api/museum/<int:museum_id>/reviews')
 def get_museum_reviews(museum_id):
@@ -448,7 +466,6 @@ def add_review():
     if not museum_id or not user_id or not rating:
         return jsonify({'error': 'Missing data'}), 400
     db = get_db()
-    # Проверяем, не оставлял ли уже отзыв этот пользователь
     existing = db.execute('SELECT id FROM reviews WHERE museum_id = ? AND user_id = ?', (museum_id, user_id)).fetchone()
     if existing:
         return jsonify({'error': 'Already reviewed'}), 400
@@ -459,29 +476,129 @@ def add_review():
     db.commit()
     return jsonify({'status': 'ok'})
 
-# ------------------- СТРАНИЦА ПРОСМОТРА ЭКСКУРСИИ (БЕЗ АВТОРИЗАЦИИ) -------------------
-@app.route('/excursion/<int:excursion_id>')
-def view_excursion(excursion_id):
-    # Простая страница, можно отрендерить список экспонатов
-    # Пока просто покажем JSON (позже можно сделать отдельный шаблон)
+# ------------------- АДМИН-ПАНЕЛЬ (API) -------------------
+def admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        pwd = request.headers.get('X-Admin-Password')
+        if pwd != ADMIN_PASSWORD:
+            return jsonify({'error': 'Unauthorized'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/admin/museums', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_museums():
     db = get_db()
-    items = db.execute('''
-        SELECT exhibits.*, museums.name as museum_name FROM excursion_items
-        JOIN exhibits ON excursion_items.exhibit_id = exhibits.id
-        JOIN museums ON exhibits.museum_id = museums.id
-        WHERE excursion_items.excursion_id = ?
-    ''', (excursion_id,)).fetchall()
-    # Возвращаем HTML-страницу со списком (для простоты – сгенерируем простой HTML)
-    html = '<html><body><h1>Экскурсия</h1><ul>'
-    for item in items:
-        html += f'<li><strong>{item["name"]}</strong> – {item["museum_name"]}<br>{item["description"]}</li>'
-    html += '</ul></body></html>'
-    return html
+    if request.method == 'GET':
+        museums = db.execute('SELECT * FROM museums').fetchall()
+        return jsonify([dict(row) for row in museums])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE museums
+            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?, pushkin_card=?
+            WHERE id=?
+        ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет'), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        museum_id = request.json.get('id')
+        db.execute('DELETE FROM museums WHERE id = ?', (museum_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
 
-# ------------------- АДМИН-ПАНЕЛЬ (API уже есть, добавим только страницу) -------------------
-# Страница /admin будет отдавать шаблон admin.html (позже создадим)
+@app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
+@admin_required
+def admin_museum_photos(museum_id):
+    db = get_db()
+    if request.method == 'GET':
+        photos = db.execute('SELECT id, photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
+        return jsonify([dict(row) for row in photos])
+    elif request.method == 'POST':
+        data = request.json
+        photo_url = data.get('photo_url')
+        if not photo_url:
+            return jsonify({'error': 'No photo_url'}), 400
+        db.execute('INSERT INTO museum_photos (museum_id, photo_url) VALUES (?, ?)', (museum_id, photo_url))
+        db.commit()
+        return jsonify({'status': 'added'})
+    elif request.method == 'DELETE':
+        photo_id = request.json.get('photo_id')
+        db.execute('DELETE FROM museum_photos WHERE id = ? AND museum_id = ?', (photo_id, museum_id))
+        db.commit()
+        return jsonify({'status': 'deleted'})
 
-# ------------------- ОБРАБОТЧИК ВЕБХУКА ДЛЯ БОТА (МАХ) -------------------
+@app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_exhibits():
+    db = get_db()
+    if request.method == 'GET':
+        exhibits = db.execute('SELECT * FROM exhibits').fetchall()
+        return jsonify([dict(row) for row in exhibits])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO exhibits (museum_id, name, description, photo_url, subject)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data.get('subject', '')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE exhibits SET museum_id=?, name=?, description=?, photo_url=?, subject=?
+            WHERE id=?
+        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data.get('subject', ''), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        exhibit_id = request.json.get('id')
+        db.execute('DELETE FROM exhibits WHERE id = ?', (exhibit_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+@app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_events():
+    db = get_db()
+    if request.method == 'GET':
+        events = db.execute('SELECT * FROM events').fetchall()
+        return jsonify([dict(row) for row in events])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO events (museum_id, title, date, time, description, photo_url)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (data['museum_id'], data['title'], data['date'], data.get('time'), data.get('description'), data.get('photo_url')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE events SET museum_id=?, title=?, date=?, time=?, description=?, photo_url=?
+            WHERE id=?
+        ''', (data['museum_id'], data['title'], data['date'], data.get('time'), data.get('description'), data.get('photo_url'), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        event_id = request.json.get('id')
+        db.execute('DELETE FROM events WHERE id = ?', (event_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+# ------------------- ОБРАБОТЧИК ВЕБХУКА -------------------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
@@ -495,11 +612,14 @@ def webhook():
         })
     return jsonify({})
 
-# ------------------- АДМИН API (существующие, без изменений, но они уже есть) -------------------
-# (они уже описаны выше, повторно не пишем)
-
-# Запуск
+# ------------------- ЗАПУСК -------------------
 if __name__ == '__main__':
+    # При первом запуске выполняем миграцию (создаём таблицы и поля)
     if not os.path.exists(DATABASE):
-        init_db()
+        # Если базы нет – создаём с миграцией
+        migrate_db()
+    else:
+        # Если база есть – просто применяем миграцию (добавим недостающие таблицы/поля)
+        with app.app_context():
+            migrate_db()
     app.run(debug=True, host='0.0.0.0', port=5000)
