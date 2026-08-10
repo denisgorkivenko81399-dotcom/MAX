@@ -107,12 +107,6 @@ button.primary { background: #7b4a2e; }
 
 input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border: 1px solid #e0cfbf; border-radius: 60px; }
 
-/* Админ-панель (старая) */
-.admin-login-btn { background: #5e3a22; margin-top: 1rem; }
-#adminControls { margin-top: 2rem; border-top: 2px solid #e0cfbf; padding-top: 1rem; }
-.admin-item { background: #fff7ef; border-radius: 20px; padding: 0.8rem; margin: 0.5rem 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
-.hidden { display: none; }
-
 /* Обложка музея */
 .museum-cover {
     width: 100%;
@@ -206,26 +200,9 @@ input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border
 }
 .calendar-table td.today.has-event::after { background: white; }
 
-/* События на дату */
-#events-by-date {
-    margin-top: 1rem;
-}
-.event-card {
-    background: white;
-    border-radius: 20px;
-    padding: 0.8rem 1rem;
-    margin: 0.5rem 0;
-    border: 1px solid #f2e5d8;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-}
-.event-card h4 { margin-bottom: 0.3rem; }
-.event-card p { margin: 0.2rem 0; font-size: 0.9rem; }
-.event-card button { padding: 0.3rem 1rem; font-size: 0.75rem; }
-.event-card button:disabled {
-    background: #b0a08e;
-    cursor: default;
-    transform: none;
-}
+/* Лента событий (сохраняем стили) */
+#events-list .card { cursor: default; }
+#events-list .card:hover { transform: none; }
 
 /* ===== Образовательный модуль ===== */
 #educational-content {
@@ -302,7 +279,23 @@ input, select, textarea { width: 100%; padding: 0.8rem; margin: 0.5rem 0; border
 }
 .share-buttons button i { margin-right: 4px; }
 
-/* ===== Улучшенная админ-панель (основные стили) ===== */
+/* ===== Ссылка на админ-панель в паспорте ===== */
+.admin-link-btn {
+    display: inline-block;
+    background: #7b4a2e;
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border-radius: 60px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: 0.2s;
+}
+.admin-link-btn:hover {
+    background: #5e3a22;
+    transform: scale(1.02);
+}
+
+/* ===== Улучшенная админ-панель (для страницы /admin) ===== */
 .admin-container {
     max-width: 900px;
     margin: 1rem auto;
