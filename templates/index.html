@@ -17,6 +17,7 @@
         <button class="tab-btn active" data-tab="main"><i class="fas fa-home"></i> Главная</button>
         <button class="tab-btn" data-tab="map"><i class="fas fa-map"></i> Карта</button>
         <button class="tab-btn" data-tab="events"><i class="fas fa-calendar-alt"></i> События</button>
+        <button class="tab-btn" data-tab="educational"><i class="fas fa-graduation-cap"></i> Школьникам</button>
         <button class="tab-btn" data-tab="passport"><i class="fas fa-passport"></i> Мой паспорт</button>
     </div>
     <div class="tab-content">
@@ -30,7 +31,12 @@
             <div class="filter-bar">
                 <label><input type="checkbox" id="showOnlySubscribedEvents"> Только из подписанных музеев</label>
             </div>
-            <div id="events-list" class="card-list"></div>
+            <div id="calendar-grid"></div>
+            <h3>События на выбранную дату</h3>
+            <div id="events-by-date"></div>
+        </div>
+        <div id="educational-tab" class="tab-pane">
+            <div id="educational-content"></div>
         </div>
         <div id="passport-tab" class="tab-pane">
             <div id="passport-info"></div>
@@ -56,6 +62,7 @@
                     <button id="addEventBtn"><i class="fas fa-plus"></i> Добавить событие</button>
                     <div id="eventsAdminList"></div>
                 </div>
+                <p style="margin-top: 15px;"><a href="/admin" target="_blank" class="admin-link"><i class="fas fa-external-link-alt"></i> Перейти к улучшенной админ-панели</a></p>
             </div>
         </div>
     </div>
