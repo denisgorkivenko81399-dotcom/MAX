@@ -8,6 +8,11 @@ let visits = [];
 let ymapsReady = false;
 let museumPhotosCache = {}; // кэш фото для каждого музея
 
+// Переменные для календаря
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth() + 1; // 1-12
+let selectedDate = getTodayDate(); // строка YYYY-MM-DD
+
 // Получение user_id
 function getUserId() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -78,20 +83,47 @@ async function preloadAllPhotos() {
     await Promise.all(promises);
 }
 
-// Показать детальную карточку музея с маршрутом
+// Показать детальную карточку музея с маршрутом, отзывами и кнопками поделиться
 async function showMuseumDetails(museumId) {
     const museum = museums.find(m => m.id === museumId);
     if (!museum) return;
     const photos = await getMuseumPhotos(museumId);
     const isSubscribed = subscriptions.some(s => s.id === museum.id);
     const isVisited = visits.some(v => v.museum_id === museum.id && v.visited === 1);
-    // Ссылка на маршрут в Яндекс.Картах
     const routeLink = `https://yandex.ru/maps/?rtext=~${museum.lat},${museum.lng}&rtt=auto`;
     
     const modal = document.getElementById('museumModal');
     const container = document.getElementById('museumDetailContent');
     if (!modal || !container) return;
     
+    // Получаем отзывы и рейтинг
+    const reviews = await api(`/api/museum/${museum.id}/reviews`);
+    const ratingData = await api(`/api/museum/${museum.id}/rating`);
+    const avgRating = ratingData.average || 0;
+    
+    // Формируем блок отзывов
+    let reviewsHtml = `<div class="reviews-section">
+        <h4>Отзывы (средний рейтинг: ${avgRating.toFixed(1)} ⭐)</h4>
+        <div id="reviews-list">`;
+    if (reviews.length) {
+        reviews.forEach(r => {
+            const name = r.user_name || 'Аноним';
+            reviewsHtml += `
+                <div class="review-item">
+                    <strong>${escapeHtml(name)}</strong> (${r.rating}⭐)
+                    <p>${escapeHtml(r.text || '')}</p>
+                    <small>${r.created_at}</small>
+                </div>
+            `;
+        });
+    } else {
+        reviewsHtml += '<p>Пока нет отзывов. Будьте первым!</p>';
+    }
+    reviewsHtml += `</div>
+        <button id="write-review-btn" class="review-btn">Написать отзыв</button>
+    </div>`;
+    
+    // Формируем HTML
     let coverHtml = '';
     if (museum.cover_photo_url) {
         coverHtml = `<img src="${museum.cover_photo_url}" class="museum-cover" alt="обложка">`;
@@ -107,6 +139,16 @@ async function showMuseumDetails(museumId) {
             ${photos.map(p => `<img src="${p}" style="height: 120px; object-fit: cover; border-radius: 12px;">`).join('')}
         </div>`;
     }
+    
+    // Кнопки поделиться
+    const shareButtons = `
+        <div class="share-buttons" style="margin-top: 15px;">
+            <button id="share-vk"><i class="fab fa-vk"></i> ВКонтакте</button>
+            <button id="share-max"><i class="fas fa-share-alt"></i> МАХ</button>
+            <button id="share-ok"><i class="fab fa-odnoklassniki"></i> Одноклассники</button>
+            <button id="copy-link"><i class="fas fa-copy"></i> Копировать ссылку</button>
+        </div>
+    `;
     
     container.innerHTML = `
         <h2>${escapeHtml(museum.name)}</h2>
@@ -124,16 +166,23 @@ async function showMuseumDetails(museumId) {
             <button id="detailSubscribeBtn" data-id="${museum.id}">${isSubscribed ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться'}</button>
             <button id="detailVisitBtn" data-id="${museum.id}" data-visited="${isVisited}">${isVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение'}</button>
         </div>
+        ${shareButtons}
+        <hr>
+        ${reviewsHtml}
     `;
     
     modal.classList.remove('hidden');
     const closeSpan = modal.querySelector('.close');
     if (closeSpan) closeSpan.onclick = () => modal.classList.add('hidden');
     
+    // --- Обработчики кнопок ---
+    // Экспонаты
     document.getElementById('detailExhibitsBtn')?.addEventListener('click', () => {
         modal.classList.add('hidden');
         showExhibits(museum.id);
     });
+    
+    // Подписка
     document.getElementById('detailSubscribeBtn')?.addEventListener('click', async () => {
         const isSub = subscriptions.some(s => s.id === museum.id);
         if (isSub) {
@@ -156,7 +205,10 @@ async function showMuseumDetails(museumId) {
         renderPassport();
         const filter = document.getElementById('showOnlySubscribedEvents');
         if (filter && filter.checked) renderEvents();
+        renderCalendar(currentYear, currentMonth); // обновить календарь (подписки влияют на события)
     });
+    
+    // Отметка посещения
     document.getElementById('detailVisitBtn')?.addEventListener('click', async () => {
         const btn = document.getElementById('detailVisitBtn');
         const currentlyVisited = btn.dataset.visited === 'true';
@@ -171,6 +223,52 @@ async function showMuseumDetails(museumId) {
         }
         renderPassport();
     });
+    
+    // --- Обработчики кнопок "Поделиться" ---
+    document.getElementById('share-vk')?.addEventListener('click', () => {
+        const url = encodeURIComponent(window.location.origin + '/?museum=' + museum.id);
+        const text = encodeURIComponent(`Я нашёл интересный музей "${museum.name}" в Ставропольском крае! Посмотрите экспонаты и запланируйте визит:`);
+        window.open(`https://vk.com/share.php?url=${url}&title=${text}`, '_blank');
+    });
+    document.getElementById('share-max')?.addEventListener('click', () => {
+        copyShareLink(museum.id);
+    });
+    document.getElementById('share-ok')?.addEventListener('click', () => {
+        const url = encodeURIComponent(window.location.origin + '/?museum=' + museum.id);
+        window.open(`https://connect.ok.ru/dk?st.cmd=WidgetShare&st.shareUrl=${url}`, '_blank');
+    });
+    document.getElementById('copy-link')?.addEventListener('click', () => {
+        copyShareLink(museum.id);
+    });
+    
+    // --- Обработчик кнопки "Написать отзыв" ---
+    document.getElementById('write-review-btn')?.addEventListener('click', () => {
+        const rating = prompt('Оцените музей (1-5 звёзд):');
+        if (rating && rating >= 1 && rating <= 5) {
+            const text = prompt('Ваш комментарий (необязательно):');
+            const name = prompt('Ваше имя (или оставьте пустым для анонима):') || null;
+            api('/api/reviews/add', {
+                method: 'POST',
+                body: JSON.stringify({
+                    museum_id: museum.id,
+                    user_id: currentUserId,
+                    rating: parseInt(rating),
+                    text: text,
+                    user_name: name
+                })
+            }).then(() => {
+                alert('Спасибо за отзыв!');
+                showMuseumDetails(museum.id); // обновить модалку
+            }).catch(() => alert('Вы уже оставили отзыв!'));
+        }
+    });
+}
+
+// Функция копирования ссылки для поделиться
+function copyShareLink(museumId) {
+    const url = window.location.origin + '/?museum=' + museumId;
+    navigator.clipboard.writeText(url);
+    alert('Ссылка скопирована в буфер обмена!');
 }
 
 // Показать экспонаты
@@ -185,6 +283,7 @@ async function showExhibits(museumId) {
                 <h4>${escapeHtml(ex.name)}</h4>
                 <p>${escapeHtml(ex.description || '')}</p>
                 ${ex.photo_url ? `<img src="${ex.photo_url}" style="max-height:150px">` : ''}
+                ${ex.subject ? `<p><strong>Тема:</strong> ${escapeHtml(ex.subject)}</p>` : ''}
             </div>
         `).join('');
     } else {
@@ -246,6 +345,7 @@ async function renderMain() {
             renderPassport();
             const filter = document.getElementById('showOnlySubscribedEvents');
             if (filter && filter.checked) renderEvents();
+            renderCalendar(currentYear, currentMonth);
         });
     });
     document.querySelectorAll('.visit-btn').forEach(btn => {
@@ -287,7 +387,278 @@ window.showExhibitsFromMap = function(museumId) {
     showExhibits(museumId);
 };
 
-// Рендер событий
+// ------------------- КАЛЕНДАРЬ СОБЫТИЙ -------------------
+function getTodayDate() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function renderCalendar(year, month) {
+    const container = document.getElementById('calendar-grid');
+    if (!container) return;
+    // Загружаем события за месяц
+    const monthEvents = await api(`/api/events/month?year=${year}&month=${month}`);
+    // Строим календарь
+    const firstDay = new Date(year, month-1, 1).getDay(); // 0-6 (воскресенье-суббота)
+    const daysInMonth = new Date(year, month, 0).getDate();
+    let html = `<div class="calendar-header">
+                  <button id="prevMonth"><i class="fas fa-chevron-left"></i></button>
+                  <span>${month}.${year}</span>
+                  <button id="nextMonth"><i class="fas fa-chevron-right"></i></button>
+                </div>
+                <table class="calendar-table">
+                  <tr><th>Пн</th><th>Вт</th><th>Ср</th><th>Чт</th><th>Пт</th><th>Сб</th><th>Вс</th></tr><tr>`;
+    // Смещение для понедельника как первого дня
+    let startOffset = (firstDay === 0) ? 6 : firstDay - 1;
+    for (let i = 0; i < startOffset; i++) {
+        html += '<td></td>';
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const hasEvent = monthEvents.some(e => e.date === dateStr);
+        const isToday = (dateStr === getTodayDate());
+        html += `<td data-date="${dateStr}" class="${hasEvent ? 'has-event' : ''} ${isToday ? 'today' : ''}">${d}</td>`;
+        if ((d + startOffset) % 7 === 0 && d < daysInMonth) {
+            html += '</tr><tr>';
+        }
+    }
+    html += '</tr></table>';
+    container.innerHTML = html;
+
+    // Обработчики переключения месяцев
+    document.getElementById('prevMonth').addEventListener('click', () => {
+        if (currentMonth === 1) { currentMonth = 12; currentYear--; } else { currentMonth--; }
+        renderCalendar(currentYear, currentMonth);
+        // Загружаем события для сохранённой даты (если она есть в этом месяце, иначе сбрасываем на сегодня)
+        const selectedDateObj = new Date(selectedDate);
+        if (selectedDateObj.getFullYear() === currentYear && selectedDateObj.getMonth()+1 === currentMonth) {
+            loadEventsForDate(selectedDate);
+        } else {
+            selectedDate = getTodayDate();
+            loadEventsForDate(selectedDate);
+        }
+    });
+    document.getElementById('nextMonth').addEventListener('click', () => {
+        if (currentMonth === 12) { currentMonth = 1; currentYear++; } else { currentMonth++; }
+        renderCalendar(currentYear, currentMonth);
+        const selectedDateObj = new Date(selectedDate);
+        if (selectedDateObj.getFullYear() === currentYear && selectedDateObj.getMonth()+1 === currentMonth) {
+            loadEventsForDate(selectedDate);
+        } else {
+            selectedDate = getTodayDate();
+            loadEventsForDate(selectedDate);
+        }
+    });
+
+    // При клике на дату загружаем события для этой даты
+    document.querySelectorAll('.calendar-table td[data-date]').forEach(td => {
+        td.addEventListener('click', () => {
+            const date = td.dataset.date;
+            selectedDate = date;
+            loadEventsForDate(date);
+        });
+    });
+
+    // Загружаем события для выбранной даты (по умолчанию сегодня)
+    if (!selectedDate) {
+        selectedDate = getTodayDate();
+    }
+    loadEventsForDate(selectedDate);
+}
+
+async function loadEventsForDate(date) {
+    const container = document.getElementById('events-by-date');
+    if (!container) return;
+    const eventsForDate = await api(`/api/events/date?date=${date}`);
+    // Также получаем список сохранённых событий пользователя
+    const userEvents = await api(`/api/user/events?user_id=${currentUserId}`);
+    const userEventIds = userEvents.map(e => e.id);
+    
+    if (eventsForDate.length === 0) {
+        container.innerHTML = '<p>На эту дату событий нет.</p>';
+        return;
+    }
+    let html = '';
+    for (const ev of eventsForDate) {
+        const isAdded = userEventIds.includes(ev.id);
+        html += `
+            <div class="event-card">
+                <h4>${escapeHtml(ev.title)}</h4>
+                <p>${escapeHtml(ev.museum_name)} | ${ev.time ? escapeHtml(ev.time) : 'время не указано'}</p>
+                <p>${escapeHtml(ev.description || '')}</p>
+                <button class="add-event-btn" data-event-id="${ev.id}" ${isAdded ? 'disabled' : ''}>
+                    ${isAdded ? 'Уже добавлено' : 'Напомнить'}
+                </button>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+    // Обработчики кнопок "Напомнить"
+    document.querySelectorAll('.add-event-btn:not([disabled])').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const eventId = parseInt(btn.dataset.eventId);
+            try {
+                await api('/api/user/events/add', {
+                    method: 'POST',
+                    body: JSON.stringify({ user_id: currentUserId, event_id: eventId })
+                });
+                btn.disabled = true;
+                btn.textContent = 'Уже добавлено';
+                renderPassport(); // обновить паспорт (раздел "Мои события")
+            } catch (e) {
+                alert('Не удалось добавить событие. Возможно, оно уже в списке.');
+            }
+        });
+    });
+}
+
+// ------------------- ОБРАЗОВАТЕЛЬНЫЙ МОДУЛЬ -------------------
+async function renderEducational() {
+    const container = document.getElementById('educational-content');
+    if (!container) return;
+    // Получаем все экспонаты и уникальные темы
+    const allExhibits = await api('/api/exhibits');
+    const subjects = [...new Set(allExhibits.map(e => e.subject).filter(Boolean))];
+    let html = `<h3>Выберите тему:</h3>
+                <select id="subject-select">
+                    <option value="">Все темы</option>
+                    ${subjects.map(s => `<option value="${s}">${escapeHtml(s)}</option>`).join('')}
+                </select>
+                <div id="exhibits-by-subject"></div>
+                <h3>Мои экскурсии</h3>
+                <button id="create-excursion-btn" class="primary-btn"><i class="fas fa-plus"></i> Создать новую экскурсию</button>
+                <div id="my-excursions-list"></div>`;
+    container.innerHTML = html;
+
+    // Обработчик выбора темы
+    document.getElementById('subject-select').addEventListener('change', async (e) => {
+        const subject = e.target.value;
+        const list = await api(`/api/exhibits/subject?subject=${subject}`);
+        const div = document.getElementById('exhibits-by-subject');
+        if (list.length === 0) {
+            div.innerHTML = '<p>Экспонатов по этой теме пока нет.</p>';
+            return;
+        }
+        // Получаем экскурсии пользователя для выбора
+        const userExcursions = await api(`/api/user/excursions?user_id=${currentUserId}`);
+        div.innerHTML = list.map(ex => `
+            <div class="exhibit-item">
+                <span><strong>${escapeHtml(ex.name)}</strong> (музей ${ex.museum_id})</span>
+                ${ex.subject ? `<span class="subject-tag">${escapeHtml(ex.subject)}</span>` : ''}
+                <button class="add-to-excursion-btn" data-exhibit-id="${ex.id}">Добавить в экскурсию</button>
+            </div>
+        `).join('');
+        // Обработчики кнопок "Добавить в экскурсию"
+        document.querySelectorAll('.add-to-excursion-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const exhibitId = parseInt(btn.dataset.exhibitId);
+                // Проверяем, есть ли у пользователя экскурсии
+                const userExcursions = await api(`/api/user/excursions?user_id=${currentUserId}`);
+                if (userExcursions.length === 0) {
+                    const create = confirm('У вас ещё нет экскурсий. Создать новую?');
+                    if (create) {
+                        const name = prompt('Введите название экскурсии:');
+                        if (name) {
+                            const newEx = await api('/api/excursions/create', {
+                                method: 'POST',
+                                body: JSON.stringify({ user_id: currentUserId, name })
+                            });
+                            // Добавляем экспонат в новую экскурсию
+                            await api('/api/excursions/add_item', {
+                                method: 'POST',
+                                body: JSON.stringify({ excursion_id: newEx.id, exhibit_id: exhibitId })
+                            });
+                            alert('Экспонат добавлен в новую экскурсию!');
+                            renderEducational(); // обновить раздел
+                        }
+                    }
+                    return;
+                }
+                // Если есть экскурсии, показываем список для выбора
+                const names = userExcursions.map(e => `${e.id}: ${e.name}`).join('\n');
+                const choice = prompt(`Введите ID экскурсии, куда добавить экспонат:\n${names}`);
+                if (choice) {
+                    const excursionId = parseInt(choice);
+                    const excursion = userExcursions.find(e => e.id === excursionId);
+                    if (!excursion) {
+                        alert('Неверный ID');
+                        return;
+                    }
+                    await api('/api/excursions/add_item', {
+                        method: 'POST',
+                        body: JSON.stringify({ excursion_id: excursionId, exhibit_id: exhibitId })
+                    });
+                    alert('Экспонат добавлен в экскурсию!');
+                    renderEducational(); // обновить список экскурсий
+                }
+            });
+        });
+    });
+
+    // Загрузка моих экскурсий
+    await renderExcursionList();
+
+    // Кнопка создания новой экскурсии
+    document.getElementById('create-excursion-btn').addEventListener('click', async () => {
+        const name = prompt('Введите название экскурсии:');
+        if (name) {
+            await api('/api/excursions/create', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: currentUserId, name })
+            });
+            renderEducational();
+        }
+    });
+}
+
+async function renderExcursionList() {
+    const container = document.getElementById('my-excursions-list');
+    if (!container) return;
+    const myExcursions = await api(`/api/user/excursions?user_id=${currentUserId}`);
+    if (myExcursions.length === 0) {
+        container.innerHTML = '<p>У вас пока нет экскурсий. Создайте первую!</p>';
+        return;
+    }
+    let html = '';
+    for (const ex of myExcursions) {
+        const items = await api(`/api/excursions/${ex.id}`);
+        html += `
+            <div class="excursion-card">
+                <h4>${escapeHtml(ex.name)}</h4>
+                <p>Количество экспонатов: ${items.length}</p>
+                <p>Создана: ${ex.created_at}</p>
+                <button class="view-excursion-btn" data-excursion-id="${ex.id}">Посмотреть</button>
+                <button class="share-excursion-btn" data-excursion-id="${ex.id}">Поделиться</button>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+
+    document.querySelectorAll('.view-excursion-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = parseInt(btn.dataset.excursionId);
+            const items = await api(`/api/excursions/${id}`);
+            if (items.length === 0) {
+                alert('В этой экскурсии пока нет экспонатов.');
+                return;
+            }
+            const names = items.map((item, idx) => `${idx+1}. ${item.name} (${item.description || 'без описания'})`).join('\n');
+            alert(`Экспонаты в экскурсии:\n${names}`);
+        });
+    });
+
+    document.querySelectorAll('.share-excursion-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = parseInt(btn.dataset.excursionId);
+            const data = await api(`/api/excursions/${id}/share`);
+            const url = window.location.origin + data.url;
+            navigator.clipboard.writeText(url);
+            alert('Ссылка на экскурсию скопирована в буфер обмена!');
+        });
+    });
+}
+
+// ------------------- РЕНДЕР СОБЫТИЙ (обновлён) -------------------
 async function renderEvents() {
     await loadEvents();
     const container = document.getElementById('events-list');
@@ -297,7 +668,7 @@ async function renderEvents() {
             <div class="card">
                 ${ev.photo_url ? `<img src="${ev.photo_url}" style="max-height:150px; object-fit:cover; border-radius:20px;">` : ''}
                 <h3>${escapeHtml(ev.title)}</h3>
-                <p><i class="fas fa-calendar-day"></i> ${ev.date || 'Дата не указана'}</p>
+                <p><i class="fas fa-calendar-day"></i> ${ev.date || 'Дата не указана'} ${ev.time ? 'в ' + escapeHtml(ev.time) : ''}</p>
                 <p><i class="fas fa-landmark"></i> ${escapeHtml(ev.museum_name)}</p>
                 <p>${escapeHtml(ev.description || '')}</p>
             </div>
@@ -307,7 +678,7 @@ async function renderEvents() {
     }
 }
 
-// Паспорт: статистика + подписки
+// ------------------- РЕНДЕР ПАСПОРТА (обновлён) -------------------
 async function renderPassport() {
     await loadVisits();
     const total = museums.length;
@@ -315,6 +686,10 @@ async function renderPassport() {
     const percent = total ? (visitedCount / total * 100) : 0;
     const container = document.getElementById('passport-info');
     if (!container) return;
+    
+    // Получаем список сохранённых событий пользователя
+    const userEvents = await api(`/api/user/events?user_id=${currentUserId}`);
+    
     container.innerHTML = `
         <div class="card">
             <h3><i class="fas fa-passport"></i> Мои посещения</h3>
@@ -325,7 +700,23 @@ async function renderPassport() {
             <h3><i class="fas fa-bell"></i> Мои подписки</h3>
             <div id="subscriptionsList"></div>
         </div>
+        <div class="card">
+            <h3><i class="fas fa-calendar-check"></i> Мои события (напоминания)</h3>
+            <div id="user-events-list">
+                ${userEvents.length ? userEvents.map(ev => `
+                    <div class="user-event-item">
+                        <strong>${escapeHtml(ev.title)}</strong> – ${escapeHtml(ev.museum_name)} (${ev.date} ${ev.time || ''})
+                    </div>
+                `).join('') : '<p>Вы пока не добавили ни одного события.</p>'}
+            </div>
+        </div>
+        <div class="card">
+            <h3><i class="fas fa-graduation-cap"></i> Мои экскурсии</h3>
+            <div id="passport-excursions-list"></div>
+        </div>
     `;
+    
+    // Список подписок (как было)
     const subsDiv = document.getElementById('subscriptionsList');
     if (subscriptions.length) {
         subsDiv.innerHTML = subscriptions.map(sub => `
@@ -346,14 +737,28 @@ async function renderPassport() {
                 }
                 const filter = document.getElementById('showOnlySubscribedEvents');
                 if (filter && filter.checked) renderEvents();
+                renderCalendar(currentYear, currentMonth);
             });
         });
     } else {
         subsDiv.innerHTML = '<p>Вы не подписаны ни на один музей.</p>';
     }
+
+    // Список экскурсий в паспорте (коротко)
+    const excursionsDiv = document.getElementById('passport-excursions-list');
+    const myExcursions = await api(`/api/user/excursions?user_id=${currentUserId}`);
+    if (myExcursions.length) {
+        excursionsDiv.innerHTML = myExcursions.map(ex => `
+            <div style="margin: 5px 0;">
+                <strong>${escapeHtml(ex.name)}</strong> (${ex.created_at.slice(0,10)})
+            </div>
+        `).join('');
+    } else {
+        excursionsDiv.innerHTML = '<p>У вас пока нет экскурсий.</p>';
+    }
 }
 
-// ------------------- Админ-панель -------------------
+// ------------------- АДМИН-ПАНЕЛЬ (существующая, без изменений) -------------------
 async function initAdmin() {
     const loginBtn = document.getElementById('adminLoginBtn');
     if (loginBtn) loginBtn.addEventListener('click', () => {
@@ -444,6 +849,7 @@ async function loadAdminData() {
                 await api('/api/admin/events', { method: 'DELETE', body: JSON.stringify({ id: parseInt(btn.dataset.id) }) });
                 await loadAdminData();
                 renderEvents();
+                renderCalendar(currentYear, currentMonth);
             }
         }));
     }
@@ -547,7 +953,8 @@ async function showExhibitForm(id = null) {
     if (!name) return;
     const desc = prompt('Описание');
     const photoUrl = prompt('Фото URL');
-    const data = { museum_id: museumId, name, description: desc, photo_url: photoUrl };
+    const subject = prompt('Учебная тема (например, История, Краеведение, Литература и т.п.)');
+    const data = { museum_id: museumId, name, description: desc, photo_url: photoUrl, subject: subject || '' };
     if (id) {
         data.id = id;
         await api('/api/admin/exhibits', { method: 'PUT', body: JSON.stringify(data) });
@@ -569,9 +976,10 @@ async function showEventForm(id = null) {
     const title = prompt('Название события');
     if (!title) return;
     const date = prompt('Дата (YYYY-MM-DD)');
+    const time = prompt('Время (HH:MM)');
     const desc = prompt('Описание');
     const photoUrl = prompt('Фото URL');
-    const data = { museum_id: museumId, title, date, description: desc, photo_url: photoUrl };
+    const data = { museum_id: museumId, title, date, time: time || '', description: desc, photo_url: photoUrl };
     if (id) {
         data.id = id;
         await api('/api/admin/events', { method: 'PUT', body: JSON.stringify(data) });
@@ -580,8 +988,10 @@ async function showEventForm(id = null) {
     }
     await loadAdminData();
     await renderEvents();
+    renderCalendar(currentYear, currentMonth);
 }
 
+// Вспомогательная функция
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/[&<>]/g, function(m) {
@@ -592,6 +1002,7 @@ function escapeHtml(str) {
     });
 }
 
+// Переключение вкладок (обновлено)
 function initTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -601,13 +1012,19 @@ function initTabs() {
             document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
             const activePane = document.getElementById(`${tab}-tab`);
             if (activePane) activePane.classList.add('active');
+            // Действия при переключении
             if (tab === 'map' && window.ymaps) setTimeout(() => window.ymaps.geolocation, 100);
-            if (tab === 'events') renderEvents();
+            if (tab === 'events') {
+                renderEvents();
+                renderCalendar(currentYear, currentMonth);
+            }
             if (tab === 'passport') renderPassport();
+            if (tab === 'educational') renderEducational();
         });
     });
 }
 
+// Инициализация
 window.addEventListener('DOMContentLoaded', async () => {
     currentUserId = getUserId();
     await loadMuseums();
@@ -618,9 +1035,21 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderPassport();
     initTabs();
     initAdmin();
+    
     const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
-    if (filterCheckbox) filterCheckbox.addEventListener('change', () => renderEvents());
+    if (filterCheckbox) filterCheckbox.addEventListener('change', () => {
+        renderEvents();
+        renderCalendar(currentYear, currentMonth);
+    });
+    
     if (typeof ymaps !== 'undefined') {
         ymaps.ready(() => { ymapsReady = true; initYandexMap(); });
+    }
+    
+    // Если в URL есть параметр museum, открыть модалку с этим музеем
+    const urlParams = new URLSearchParams(window.location.search);
+    const museumId = urlParams.get('museum');
+    if (museumId) {
+        setTimeout(() => showMuseumDetails(parseInt(museumId)), 500);
     }
 });
