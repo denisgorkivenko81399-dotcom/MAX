@@ -23,27 +23,30 @@
     <div class="tab-content">
         <!-- Главная -->
         <div id="main-tab" class="tab-pane active">
+            <div id="today-exhibit" class="card" style="background: #faf3e8; border: 2px solid #7b4a2e; margin-bottom: 1rem;">
+                <h3>🎓 Экспонат дня</h3>
+                <div id="today-exhibit-content"></div>
+            </div>
             <div id="museums-list" class="card-list"></div>
         </div>
         <!-- Карта -->
         <div id="map-tab" class="tab-pane">
             <div id="map" style="width:100%; height:60vh;"></div>
         </div>
-        <!-- События (лента + календарь как фильтр) -->
+        <!-- События -->
         <div id="events-tab" class="tab-pane">
             <div class="filter-bar">
                 <label><input type="checkbox" id="showOnlySubscribedEvents"> Только из подписанных музеев</label>
             </div>
-            <!-- Календарь -->
             <div id="calendar-grid"></div>
-            <!-- Лента всех событий (фильтруется по дате клика) -->
             <div id="events-list" class="card-list"></div>
         </div>
         <!-- Школьникам -->
         <div id="educational-tab" class="tab-pane">
-            <div id="educational-content"></div>
+            <h2>📚 Образовательная лента</h2>
+            <div id="educational-posts" class="card-list"></div>
         </div>
-        <!-- Мой паспорт (без старой админки) -->
+        <!-- Мой паспорт -->
         <div id="passport-tab" class="tab-pane">
             <div id="passport-info"></div>
             <div style="margin-top: 2rem; text-align: center;">
