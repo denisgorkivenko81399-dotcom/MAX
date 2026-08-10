@@ -1,6 +1,6 @@
 // Глобальная переменная для хранения ID редактируемого элемента
 let editId = null;
-let editType = null; // 'museum', 'exhibit', 'event', 'photo'
+let editType = null; // 'museum', 'exhibit', 'event', 'photo', 'edu-post'
 let currentAdminTab = 'museums';
 
 // Инициализация
@@ -17,24 +17,23 @@ function initAdminTabs() {
             btn.classList.add('active');
             const tab = btn.dataset.tab;
             currentAdminTab = tab;
-            // Скрываем все секции
             document.querySelectorAll('.admin-section').forEach(s => s.classList.add('hidden'));
-            // Показываем нужную
             const sectionMap = {
                 'museums': 'museums-section',
                 'exhibits': 'exhibits-section',
                 'events': 'events-section',
-                'photos': 'photos-section'
+                'photos': 'photos-section',
+                'edu-posts': 'edu-posts-section'
             };
             const sectionId = sectionMap[tab];
             if (sectionId) {
                 document.getElementById(sectionId).classList.remove('hidden');
             }
-            // Загружаем данные для вкладки
             if (tab === 'museums') loadMuseumsList();
             else if (tab === 'exhibits') loadExhibitsList();
             else if (tab === 'events') loadEventsList();
             else if (tab === 'photos') loadMuseumsForPhotos();
+            else if (tab === 'edu-posts') loadEduPostsList();
         });
     });
 }
@@ -392,6 +391,82 @@ document.getElementById('addPhotoBtn')?.addEventListener('click', () => {
     }
 });
 
+// ------------------- УПРАВЛЕНИЕ ОБРАЗОВАТЕЛЬНЫМИ ПОСТАМИ -------------------
+async function loadEduPostsList() {
+    const container = document.getElementById('edu-posts-list-admin');
+    if (!container) return;
+    try {
+        const posts = await adminApi('/api/admin/educational_posts');
+        let html = `<table class="admin-table">
+            <thead><tr><th>ID</th><th>Название</th><th>Автор</th><th>Дата</th><th>Действия</th></tr></thead><tbody>`;
+        posts.forEach(p => {
+            html += `<tr>
+                <td>${p.id}</td>
+                <td>${escapeHtml(p.title)}</td>
+                <td>${escapeHtml(p.author || '')}</td>
+                <td>${p.created_at.slice(0,10)}</td>
+                <td class="admin-actions">
+                    <button class="edit" data-id="${p.id}" data-type="edu-post"><i class="fas fa-edit"></i></button>
+                    <button class="delete" data-id="${p.id}" data-type="edu-post"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+        container.querySelectorAll('.edit').forEach(btn => {
+            btn.addEventListener('click', () => editEduPost(parseInt(btn.dataset.id)));
+        });
+        container.querySelectorAll('.delete').forEach(btn => {
+            btn.addEventListener('click', () => deleteEduPost(parseInt(btn.dataset.id)));
+        });
+    } catch (e) {
+        container.innerHTML = '<p>Ошибка загрузки постов: ' + e.message + '</p>';
+    }
+}
+
+async function editEduPost(id) {
+    editType = 'edu-post';
+    const posts = await adminApi('/api/admin/educational_posts');
+    const post = posts.find(p => p.id === id);
+    if (!post) return;
+    const museums = await adminApi('/api/admin/museums');
+    const options = museums.map(m => ({ value: m.id, label: m.name }));
+    const fields = [
+        { name: 'title', label: 'Заголовок', required: true },
+        { name: 'content', label: 'Содержание', type: 'textarea', required: true },
+        { name: 'photo_url', label: 'Ссылка на фото' },
+        { name: 'museum_id', label: 'Музей (необязательно)', type: 'select', options: [{ value: '', label: 'Не привязан' }, ...options] },
+        { name: 'author', label: 'Автор', required: true }
+    ];
+    showForm('Редактировать пост', fields, post);
+}
+
+async function deleteEduPost(id) {
+    if (!confirm('Удалить пост?')) return;
+    try {
+        await adminApi('/api/admin/educational_posts', { method: 'DELETE', body: JSON.stringify({ id }) });
+        alert('Удалено');
+        loadEduPostsList();
+    } catch (e) {
+        alert('Ошибка удаления: ' + e.message);
+    }
+}
+
+document.getElementById('addEduPostBtn')?.addEventListener('click', async () => {
+    editType = 'edu-post';
+    editId = null;
+    const museums = await adminApi('/api/admin/museums');
+    const options = museums.map(m => ({ value: m.id, label: m.name }));
+    const fields = [
+        { name: 'title', label: 'Заголовок', required: true },
+        { name: 'content', label: 'Содержание', type: 'textarea', required: true },
+        { name: 'photo_url', label: 'Ссылка на фото' },
+        { name: 'museum_id', label: 'Музей (необязательно)', type: 'select', options: [{ value: '', label: 'Не привязан' }, ...options] },
+        { name: 'author', label: 'Автор', required: true }
+    ];
+    showForm('Добавить пост', fields);
+});
+
 // ------------------- ОБЩАЯ ФУНКЦИЯ ДЛЯ ФОРМ -------------------
 function showForm(title, fields, data = null) {
     const modal = document.getElementById('adminModal');
@@ -422,7 +497,7 @@ function showForm(title, fields, data = null) {
         } else if (f.type === 'textarea') {
             input = document.createElement('textarea');
             input.id = `field_${f.name}`;
-            input.rows = 3;
+            input.rows = 4;
             if (data && data[f.name]) input.value = data[f.name];
         } else if (f.type === 'checkbox') {
             input = document.createElement('input');
@@ -463,7 +538,7 @@ async function submitForm() {
     }
     if (data.lat) data.lat = parseFloat(data.lat);
     if (data.lng) data.lng = parseFloat(data.lng);
-    if (data.museum_id) data.museum_id = parseInt(data.museum_id);
+    if (data.museum_id) data.museum_id = parseInt(data.museum_id) || null;
     if (data.rating) data.rating = parseInt(data.rating);
 
     let url, method;
@@ -484,6 +559,7 @@ async function submitForm() {
         else if (entity === 'exhibit') loadExhibitsList();
         else if (entity === 'event') loadEventsList();
         else if (entity === 'photo') loadPhotosForMuseum(document.getElementById('museumSelectPhotos').value);
+        else if (entity === 'edu-post') loadEduPostsList();
     } catch (e) {
         alert('Ошибка: ' + e.message);
     }
