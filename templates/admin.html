@@ -1,69 +1,20 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Админ-панель – Живая история</title>
+    <title>Админ-панель</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
-    <div class="app-header">
-        <h1><i class="fas fa-cogs"></i> Админ-панель</h1>
-        <div class="user-info"><i class="fas fa-user"></i> Сотрудник</div>
+    <div style="padding:20px;">
+        <h1>Админ-панель</h1>
+        <p>Это тестовая страница. Если вы её видите – маршрут работает.</p>
+        <p><a href="/">На главную</a></p>
     </div>
-
-    <div class="admin-container">
-        <!-- Вкладки для управления -->
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="museums"><i class="fas fa-building"></i> Музеи</button>
-            <button class="tab-btn" data-tab="exhibits"><i class="fas fa-palette"></i> Экспонаты</button>
-            <button class="tab-btn" data-tab="events"><i class="fas fa-calendar-alt"></i> События</button>
-            <button class="tab-btn" data-tab="photos"><i class="fas fa-images"></i> Фотографии</button>
-        </div>
-
-        <!-- Контент для каждой вкладки будет динамически загружаться сюда -->
-        <div id="admin-content">
-            <!-- По умолчанию загружаем музеи -->
-            <div id="museums-section" class="admin-section">
-                <h2>Управление музеями</h2>
-                <button id="addMuseumBtn" class="primary"><i class="fas fa-plus"></i> Добавить музей</button>
-                <div id="museums-list-admin" class="admin-table-wrapper"></div>
-            </div>
-            <div id="exhibits-section" class="admin-section hidden">
-                <h2>Управление экспонатами</h2>
-                <button id="addExhibitBtn" class="primary"><i class="fas fa-plus"></i> Добавить экспонат</button>
-                <div id="exhibits-list-admin" class="admin-table-wrapper"></div>
-            </div>
-            <div id="events-section" class="admin-section hidden">
-                <h2>Управление событиями</h2>
-                <button id="addEventBtn" class="primary"><i class="fas fa-plus"></i> Добавить событие</button>
-                <div id="events-list-admin" class="admin-table-wrapper"></div>
-            </div>
-            <div id="photos-section" class="admin-section hidden">
-                <h2>Управление фотографиями музеев</h2>
-                <p>Выберите музей, чтобы управлять его фотографиями:</p>
-                <select id="museumSelectPhotos"></select>
-                <div id="photos-list-admin" class="admin-table-wrapper"></div>
-                <button id="addPhotoBtn" class="primary"><i class="fas fa-plus"></i> Добавить фото</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Модальное окно для форм добавления/редактирования -->
-    <div id="adminModal" class="modal hidden">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h3 id="adminModalTitle">Добавить/Редактировать</h3>
-            <form id="adminForm">
-                <!-- Поля будут динамически генерироваться в JS -->
-                <div id="formFields"></div>
-                <button type="submit" class="primary">Сохранить</button>
-                <button type="button" id="cancelFormBtn">Отмена</button>
-            </form>
-        </div>
-    </div>
-
-    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <!-- простой js для проверки -->
+    <script>
+        console.log('Админ-панель загружена');
+        document.body.innerHTML += '<p style="color:green;">JS работает!</p>';
+    </script>
 </body>
 </html>
