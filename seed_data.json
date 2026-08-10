@@ -18,13 +18,15 @@
         {
           "name": "Скелет южного слона",
           "description": "Один из двух полных скелетов южного слона, найденных в мире. Возраст 1,5 млн лет.",
-          "photo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Mammuthus_meridionalis_Saint_Petersburg.JPG/1280px-Mammuthus_meridionalis_Saint_Petersburg.JPG"
+          "photo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Mammuthus_meridionalis_Saint_Petersburg.JPG/1280px-Mammuthus_meridionalis_Saint_Petersburg.JPG",
+          "subject": "Биология"
         }
       ],
       "events": [
         {
           "title": "Ночь музеев",
           "date": "2026-05-18",
+          "time": "18:00",
           "description": "Ежегодная акция с бесплатным входом и специальной программой.",
           "photo_url": "https://via.placeholder.com/600x300?text=Ночь+музеев"
         }
@@ -47,13 +49,15 @@
         {
           "name": "Череп южного слона",
           "description": "Уникальный череп южного слона, найденный в окрестностях Пятигорска.",
-          "photo_url": "https://photo.foto-planeta.com/view/1/1/1/7/4/pyatigorsk-1117423.jpg"
+          "photo_url": "https://photo.foto-planeta.com/view/1/1/1/7/4/pyatigorsk-1117423.jpg",
+          "subject": "Биология"
         }
       ],
       "events": [
         {
           "title": "Выставка 'Кавказ в годы войны'",
           "date": "2026-06-10",
+          "time": "10:00",
           "description": "Фотографии, документы, личные вещи.",
           "photo_url": "https://via.placeholder.com/600x300?text=Выставка"
         }
@@ -76,13 +80,15 @@
         {
           "name": "Космическая коллекция им. Ф.А. Цандера",
           "description": "Уникальные экспонаты, связанные с историей космонавтики.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Космос"
+          "photo_url": "https://via.placeholder.com/400x300?text=Космос",
+          "subject": "Астрономия"
         }
       ],
       "events": [
         {
           "title": "Лекция 'Космос и Кавказ'",
           "date": "2026-04-25",
+          "time": "15:00",
           "description": "Рассказ о вкладе ученых Кавказа в космонавтику.",
           "photo_url": "https://via.placeholder.com/600x300?text=Лекция"
         }
@@ -105,13 +111,15 @@
         {
           "name": "Зал «Величественный Маджар»",
           "description": "Экспозиция о средневековом городе Маджар (XIII–XIV вв.).",
-          "photo_url": "https://via.placeholder.com/400x300?text=Маджар"
+          "photo_url": "https://via.placeholder.com/400x300?text=Маджар",
+          "subject": "История"
         }
       ],
       "events": [
         {
           "title": "День города в музее",
           "date": "2026-09-15",
+          "time": "12:00",
           "description": "Мастер-классы, экскурсии, концерт.",
           "photo_url": "https://via.placeholder.com/600x300?text=День+города"
         }
@@ -134,13 +142,15 @@
         {
           "name": "Крестьянская хата",
           "description": "Реконструкция интерьера крестьянского дома конца XIX — начала XX века.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Хата"
+          "photo_url": "https://via.placeholder.com/400x300?text=Хата",
+          "subject": "Краеведение"
         }
       ],
       "events": [
         {
           "title": "Фольклорный праздник",
           "date": "2026-07-12",
+          "time": "11:00",
           "description": "Песни, танцы, народные игры.",
           "photo_url": "https://via.placeholder.com/600x300?text=Фольклор"
         }
@@ -163,13 +173,15 @@
         {
           "name": "Тульские самовары",
           "description": "Коллекция тульских самоваров XIX-XX веков.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Самовары"
+          "photo_url": "https://via.placeholder.com/400x300?text=Самовары",
+          "subject": "История"
         }
       ],
       "events": [
         {
           "title": "Чайные посиделки",
           "date": "2026-08-20",
+          "time": "16:00",
           "description": "Дегустация чая из самовара, рассказ о традициях.",
           "photo_url": "https://via.placeholder.com/600x300?text=Чай"
         }
@@ -192,13 +204,15 @@
         {
           "name": "Реликвии 271-й стрелковой дивизии",
           "description": "Документы, награды, личные вещи бойцов.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Реликвии"
+          "photo_url": "https://via.placeholder.com/400x300?text=Реликвии",
+          "subject": "История"
         }
       ],
       "events": [
         {
           "title": "Урок мужества",
           "date": "2026-05-09",
+          "time": "10:00",
           "description": "Встреча с ветеранами, показ экспонатов.",
           "photo_url": "https://via.placeholder.com/600x300?text=Урок+мужества"
         }
@@ -221,7 +235,8 @@
         {
           "name": "Парта героя",
           "description": "Наша школа активно поддерживает инициативу всероссийского проекта Парта героя, стремясь прививать детям чувство гордости за исторические подвиги наших предков и современников. Здесь мы будем размещать информацию обо всех мероприятиях, проводимых в рамках проекта, открытия новых парт героев и установки мемориальных досок",
-          "photo_url": "https://fonar.tv/uploads/img/2022/05/10/28c7bf8f1a320173c812807eef6a716a.jpg"
+          "photo_url": "https://fonar.tv/uploads/img/2022/05/10/28c7bf8f1a320173c812807eef6a716a.jpg",
+          "subject": "Краеведение"
         }
       ],
       "events": []
@@ -241,7 +256,8 @@
         {
           "name": "Портрет Ермака Тимофеевича Повольского",
           "description": "Собирательный образ, созданный неизвестным художником конца XVII века (иногда датируется XVIII в.) в стиле парсуны.",
-          "photo_url": "https://literatura5.narod.ru/ermak.JPG"
+          "photo_url": "https://literatura5.narod.ru/ermak.JPG",
+          "subject": "История"
         }
       ],
       "events": []
@@ -261,7 +277,8 @@
         {
           "name": "Шашка гвардейская образца 1927 года",
           "description": "Подлинная шашка, принадлежавшая одному из офицеров 4-го Гвардейского казачьего корпуса. Клинок стальной, с незначительными боевыми зазубринами. На ножнах выгравирована дарственная надпись.",
-          "photo_url": "https://antikvariat.ru/upload/iblock/97f/img_0985_14927840799364320.jpg"
+          "photo_url": "https://antikvariat.ru/upload/iblock/97f/img_0985_14927840799364320.jpg",
+          "subject": "История"
         }
       ],
       "events": []
@@ -281,7 +298,8 @@
         {
           "name": "Ручная маслобойка (деревянная)",
           "description": "Вертикальная деревянная маслобойка ударного типа, XIX век. Изготовлена из дуба, украшена резным геометрическим орнаментом. Использовалась крестьянами для сбивания сливочного масла.",
-          "photo_url": "https://avatars.mds.yandex.net/i?id=16e51476cd389d75ea0f53be19680f8b_l-4032228-images-thumbs&n=13"
+          "photo_url": "https://avatars.mds.yandex.net/i?id=16e51476cd389d75ea0f53be19680f8b_l-4032228-images-thumbs&n=13",
+          "subject": "Краеведение"
         }
       ],
       "events": []
@@ -301,7 +319,8 @@
         {
           "name": "Фрагмент обшивки самолета Ил-2",
           "description": "Деформированный фрагмент дюралюминия со следами пулевых пробоин. Часть крыла штурмовика, сбитого над Ставропольем в 1943 году. Поднят отрядом «Поиск».",
-          "photo_url": "https://via.placeholder.com/400x300?text=Фрагмент+Ил-2"
+          "photo_url": "https://via.placeholder.com/400x300?text=Фрагмент+Ил-2",
+          "subject": "История"
         }
       ],
       "events": []
@@ -321,7 +340,8 @@
         {
           "name": "Андреевский флаг",
           "description": "Подлинный флаг ВМФ СССР/РФ, переданный в музей командованием одной из частей морской пехоты в знак дружбы. На флаге оставлены автографы офицеров.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Андреевский+флаг"
+          "photo_url": "https://via.placeholder.com/400x300?text=Андреевский+флаг",
+          "subject": "История"
         }
       ],
       "events": []
@@ -341,7 +361,8 @@
         {
           "name": "Стерилизатор медицинский полевой",
           "description": "Металлический цилиндрический контейнер времен Великой Отечественной войны. Использовался для кипячения и стерилизации хирургических инструментов медперсоналом госпиталя.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Стерилизатор"
+          "photo_url": "https://via.placeholder.com/400x300?text=Стерилизатор",
+          "subject": "История"
         }
       ],
       "events": []
@@ -361,7 +382,8 @@
         {
           "name": "Листовка-пропуск для немецких солдат (1943 г.)",
           "description": "Подлинная советская агитационная листовка с текстом на немецком языке («Штыки в землю»), распространявшаяся в период отступления фашистов с Кавказа.",
-          "photo_url": "https://via.placeholder.com/400x300?text=Листовка+пропуск"
+          "photo_url": "https://via.placeholder.com/400x300?text=Листовка+пропуск",
+          "subject": "История"
         }
       ],
       "events": []
@@ -381,7 +403,8 @@
         {
           "name": "Школьный портфель 1950-х годов",
           "description": "Кожаный дерматиновый портфель коричневого цвета с металлической застежкой. Принадлежал одному из первых выпускников послевоенного времени.",
-          "photo_url": "https://avatars.mds.yandex.net/i?id=db93b81ed10ca05e3e5c14185bb4fb11e3390859-4613623-images-thumbs&n=13"
+          "photo_url": "https://avatars.mds.yandex.net/i?id=db93b81ed10ca05e3e5c14185bb4fb11e3390859-4613623-images-thumbs&n=13",
+          "subject": "История"
         }
       ],
       "events": []
@@ -401,7 +424,8 @@
         {
           "name": "Челнок ткацкий самолетный",
           "description": "Деревянный ударный челнок от автоматического ткацкого станка СТБ, использовавшийся на комбинате в 1970-80-е годы. На поверхности следы от тысяч пролетов нити.",
-          "photo_url": "https://avatars.mds.yandex.net/i?id=a4df13cbc4c8fdedc51ef84f54004150_l-5233430-images-thumbs&n=13"
+          "photo_url": "https://avatars.mds.yandex.net/i?id=a4df13cbc4c8fdedc51ef84f54004150_l-5233430-images-thumbs&n=13",
+          "subject": "Технология"
         }
       ],
       "events": []
