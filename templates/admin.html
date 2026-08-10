@@ -14,15 +14,14 @@
     </div>
 
     <div class="admin-container">
-        <!-- Вкладки -->
         <div class="tabs">
             <button class="tab-btn active" data-tab="museums"><i class="fas fa-building"></i> Музеи</button>
             <button class="tab-btn" data-tab="exhibits"><i class="fas fa-palette"></i> Экспонаты</button>
             <button class="tab-btn" data-tab="events"><i class="fas fa-calendar-alt"></i> События</button>
             <button class="tab-btn" data-tab="photos"><i class="fas fa-images"></i> Фотографии</button>
+            <button class="tab-btn" data-tab="edu-posts"><i class="fas fa-graduation-cap"></i> Образовательные</button>
         </div>
 
-        <!-- Контент -->
         <div id="admin-content">
             <div id="museums-section" class="admin-section">
                 <h2>Управление музеями</h2>
@@ -46,10 +45,14 @@
                 <div id="photos-list-admin" class="admin-table-wrapper"></div>
                 <button id="addPhotoBtn" class="primary"><i class="fas fa-plus"></i> Добавить фото</button>
             </div>
+            <div id="edu-posts-section" class="admin-section hidden">
+                <h2>Управление образовательными постами</h2>
+                <button id="addEduPostBtn" class="primary"><i class="fas fa-plus"></i> Добавить пост</button>
+                <div id="edu-posts-list-admin" class="admin-table-wrapper"></div>
+            </div>
         </div>
     </div>
 
-    <!-- Модальное окно для форм -->
     <div id="adminModal" class="modal hidden">
         <div class="modal-content">
             <span class="close">&times;</span>
