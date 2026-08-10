@@ -3,10 +3,8 @@ let editId = null;
 let editType = null; // 'museum', 'exhibit', 'event', 'photo'
 let currentAdminTab = 'museums';
 
-// Инициализация админ-панели
+// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
-    // Проверяем пароль при загрузке (если не авторизован – перенаправляем)
-    // Но пароль проверяется на сервере при каждом запросе, поэтому просто загружаем данные
     initAdminTabs();
     loadMuseumsList();
 });
@@ -41,35 +39,22 @@ function initAdminTabs() {
     });
 }
 
-// ------------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ -------------------
-function getAdminPassword() {
-    // Пароль хранится в сессии или можно запросить у пользователя.
-    // Так как мы уже ввели пароль при входе на главной странице, используем localStorage.
-    // Если пароль не сохранён, запросим.
-    let pwd = localStorage.getItem('admin_password');
-    if (!pwd) {
-        pwd = prompt('Введите пароль администратора:');
-        if (pwd) {
-            localStorage.setItem('admin_password', pwd);
-        } else {
-            alert('Пароль обязателен');
-            return null;
-        }
-    }
-    return pwd;
-}
-
+// Вспомогательная функция для API с паролем
 async function adminApi(url, options = {}) {
-    const pwd = getAdminPassword();
-    if (!pwd) throw new Error('No password');
+    const pwd = localStorage.getItem('admin_password');
+    if (!pwd) {
+        const entered = prompt('Введите пароль администратора:');
+        if (entered) localStorage.setItem('admin_password', entered);
+        else throw new Error('Пароль обязателен');
+    }
     const headers = {
         'Content-Type': 'application/json',
-        'X-Admin-Password': pwd
+        'X-Admin-Password': localStorage.getItem('admin_password')
     };
     const res = await fetch(url, { ...options, headers });
     if (res.status === 403) {
         localStorage.removeItem('admin_password');
-        alert('Неверный пароль, попробуйте снова');
+        alert('Неверный пароль. Попробуйте снова.');
         throw new Error('Unauthorized');
     }
     if (!res.ok) throw new Error(await res.text());
@@ -78,111 +63,12 @@ async function adminApi(url, options = {}) {
 
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
+    return str.replace(/[&<>]/g, m => {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
         return m;
     });
-}
-
-function showForm(title, fields, data = null) {
-    // fields: массив объектов {name, label, type, required?, options?}
-    const modal = document.getElementById('adminModal');
-    const form = document.getElementById('adminForm');
-    const titleEl = document.getElementById('adminModalTitle');
-    const container = document.getElementById('formFields');
-    container.innerHTML = '';
-    editId = data ? data.id : null;
-    titleEl.textContent = title;
-    fields.forEach(f => {
-        const div = document.createElement('div');
-        div.className = 'form-group';
-        const label = document.createElement('label');
-        label.textContent = f.label + (f.required ? ' *' : '');
-        label.htmlFor = `field_${f.name}`;
-        div.appendChild(label);
-        let input;
-        if (f.type === 'select') {
-            input = document.createElement('select');
-            input.id = `field_${f.name}`;
-            f.options.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.label;
-                if (data && data[f.name] == opt.value) option.selected = true;
-                input.appendChild(option);
-            });
-        } else if (f.type === 'textarea') {
-            input = document.createElement('textarea');
-            input.id = `field_${f.name}`;
-            input.rows = 3;
-            if (data && data[f.name]) input.value = data[f.name];
-        } else {
-            input = document.createElement('input');
-            input.type = f.type || 'text';
-            input.id = `field_${f.name}`;
-            if (f.type === 'checkbox') {
-                input.type = 'checkbox';
-                if (data && data[f.name] === 'да') input.checked = true;
-            } else {
-                if (data && data[f.name] !== undefined) input.value = data[f.name];
-                else if (f.default) input.value = f.default;
-            }
-        }
-        input.name = f.name;
-        if (f.required) input.required = true;
-        div.appendChild(input);
-        container.appendChild(div);
-    });
-    modal.classList.remove('hidden');
-    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
-    document.getElementById('cancelFormBtn').onclick = () => modal.classList.add('hidden');
-    form.onsubmit = async (e) => {
-        e.preventDefault();
-        await submitForm();
-    };
-}
-
-async function submitForm() {
-    const form = document.getElementById('adminForm');
-    const formData = new FormData(form);
-    const data = {};
-    for (let [key, value] of formData.entries()) {
-        if (key === 'pushkin_card' || key === 'visited') {
-            data[key] = value === 'on' ? 'да' : 'нет';
-        } else {
-            data[key] = value;
-        }
-    }
-    // Для числовых полей
-    if (data.lat) data.lat = parseFloat(data.lat);
-    if (data.lng) data.lng = parseFloat(data.lng);
-    if (data.museum_id) data.museum_id = parseInt(data.museum_id);
-    if (data.rating) data.rating = parseInt(data.rating);
-
-    let url, method;
-    let entity = editType;
-    if (editId) {
-        method = 'PUT';
-        url = `/api/admin/${entity}s`;
-        data.id = editId;
-    } else {
-        method = 'POST';
-        url = `/api/admin/${entity}s`;
-    }
-    try {
-        await adminApi(url, { method, body: JSON.stringify(data) });
-        alert('Сохранено!');
-        document.getElementById('adminModal').classList.add('hidden');
-        // Обновить текущий список
-        if (entity === 'museum') loadMuseumsList();
-        else if (entity === 'exhibit') loadExhibitsList();
-        else if (entity === 'event') loadEventsList();
-        else if (entity === 'photo') loadPhotosForMuseum(document.getElementById('museumSelectPhotos').value);
-    } catch (e) {
-        alert('Ошибка: ' + e.message);
-    }
 }
 
 // ------------------- УПРАВЛЕНИЕ МУЗЕЯМИ -------------------
@@ -207,7 +93,6 @@ async function loadMuseumsList() {
         });
         html += `</tbody></table>`;
         container.innerHTML = html;
-        // Обработчики кнопок редактирования и удаления
         container.querySelectorAll('.edit').forEach(btn => {
             btn.addEventListener('click', () => editMuseum(parseInt(btn.dataset.id)));
         });
@@ -215,30 +100,27 @@ async function loadMuseumsList() {
             btn.addEventListener('click', () => deleteMuseum(parseInt(btn.dataset.id)));
         });
     } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки музеев</p>';
+        container.innerHTML = '<p>Ошибка загрузки музеев: ' + e.message + '</p>';
     }
 }
 
-function editMuseum(id) {
+async function editMuseum(id) {
     editType = 'museum';
-    // Найдём музей по id в таблице (можно запросить отдельно, но проще взять из текущего списка)
-    // Но для формы нужны данные, поэтому запросим отдельно.
-    adminApi('/api/admin/museums').then(museums => {
-        const museum = museums.find(m => m.id === id);
-        if (!museum) return;
-        const fields = [
-            { name: 'name', label: 'Название', required: true },
-            { name: 'address', label: 'Адрес', required: true },
-            { name: 'lat', label: 'Широта', type: 'number', required: true },
-            { name: 'lng', label: 'Долгота', type: 'number', required: true },
-            { name: 'description', label: 'Описание', type: 'textarea' },
-            { name: 'contacts', label: 'Контакты' },
-            { name: 'website', label: 'Сайт' },
-            { name: 'cover_photo_url', label: 'Ссылка на главное фото' },
-            { name: 'pushkin_card', label: 'Пушкинская карта', type: 'checkbox' }
-        ];
-        showForm('Редактировать музей', fields, museum);
-    });
+    const museums = await adminApi('/api/admin/museums');
+    const museum = museums.find(m => m.id === id);
+    if (!museum) return;
+    const fields = [
+        { name: 'name', label: 'Название', required: true },
+        { name: 'address', label: 'Адрес', required: true },
+        { name: 'lat', label: 'Широта', type: 'number', required: true },
+        { name: 'lng', label: 'Долгота', type: 'number', required: true },
+        { name: 'description', label: 'Описание', type: 'textarea' },
+        { name: 'contacts', label: 'Контакты' },
+        { name: 'website', label: 'Сайт' },
+        { name: 'cover_photo_url', label: 'Ссылка на главное фото' },
+        { name: 'pushkin_card', label: 'Пушкинская карта', type: 'checkbox' }
+    ];
+    showForm('Редактировать музей', fields, museum);
 }
 
 async function deleteMuseum(id) {
@@ -252,7 +134,6 @@ async function deleteMuseum(id) {
     }
 }
 
-// Обработчик кнопки "Добавить музей"
 document.getElementById('addMuseumBtn')?.addEventListener('click', () => {
     editType = 'museum';
     editId = null;
@@ -302,27 +183,25 @@ async function loadExhibitsList() {
             btn.addEventListener('click', () => deleteExhibit(parseInt(btn.dataset.id)));
         });
     } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки экспонатов</p>';
+        container.innerHTML = '<p>Ошибка загрузки экспонатов: ' + e.message + '</p>';
     }
 }
 
-function editExhibit(id) {
+async function editExhibit(id) {
     editType = 'exhibit';
-    adminApi('/api/admin/exhibits').then(exhibits => {
-        const ex = exhibits.find(e => e.id === id);
-        if (!ex) return;
-        adminApi('/api/admin/museums').then(museums => {
-            const options = museums.map(m => ({ value: m.id, label: m.name }));
-            const fields = [
-                { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-                { name: 'name', label: 'Название', required: true },
-                { name: 'description', label: 'Описание', type: 'textarea' },
-                { name: 'photo_url', label: 'Фото URL' },
-                { name: 'subject', label: 'Учебная тема' }
-            ];
-            showForm('Редактировать экспонат', fields, ex);
-        });
-    });
+    const exhibits = await adminApi('/api/admin/exhibits');
+    const ex = exhibits.find(e => e.id === id);
+    if (!ex) return;
+    const museums = await adminApi('/api/admin/museums');
+    const options = museums.map(m => ({ value: m.id, label: m.name }));
+    const fields = [
+        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
+        { name: 'name', label: 'Название', required: true },
+        { name: 'description', label: 'Описание', type: 'textarea' },
+        { name: 'photo_url', label: 'Фото URL' },
+        { name: 'subject', label: 'Учебная тема' }
+    ];
+    showForm('Редактировать экспонат', fields, ex);
 }
 
 async function deleteExhibit(id) {
@@ -336,20 +215,19 @@ async function deleteExhibit(id) {
     }
 }
 
-document.getElementById('addExhibitBtn')?.addEventListener('click', () => {
+document.getElementById('addExhibitBtn')?.addEventListener('click', async () => {
     editType = 'exhibit';
     editId = null;
-    adminApi('/api/admin/museums').then(museums => {
-        const options = museums.map(m => ({ value: m.id, label: m.name }));
-        const fields = [
-            { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-            { name: 'name', label: 'Название', required: true },
-            { name: 'description', label: 'Описание', type: 'textarea' },
-            { name: 'photo_url', label: 'Фото URL' },
-            { name: 'subject', label: 'Учебная тема' }
-        ];
-        showForm('Добавить экспонат', fields);
-    });
+    const museums = await adminApi('/api/admin/museums');
+    const options = museums.map(m => ({ value: m.id, label: m.name }));
+    const fields = [
+        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
+        { name: 'name', label: 'Название', required: true },
+        { name: 'description', label: 'Описание', type: 'textarea' },
+        { name: 'photo_url', label: 'Фото URL' },
+        { name: 'subject', label: 'Учебная тема' }
+    ];
+    showForm('Добавить экспонат', fields);
 });
 
 // ------------------- УПРАВЛЕНИЕ СОБЫТИЯМИ -------------------
@@ -384,28 +262,26 @@ async function loadEventsList() {
             btn.addEventListener('click', () => deleteEvent(parseInt(btn.dataset.id)));
         });
     } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки событий</p>';
+        container.innerHTML = '<p>Ошибка загрузки событий: ' + e.message + '</p>';
     }
 }
 
-function editEvent(id) {
+async function editEvent(id) {
     editType = 'event';
-    adminApi('/api/admin/events').then(events => {
-        const ev = events.find(e => e.id === id);
-        if (!ev) return;
-        adminApi('/api/admin/museums').then(museums => {
-            const options = museums.map(m => ({ value: m.id, label: m.name }));
-            const fields = [
-                { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-                { name: 'title', label: 'Название', required: true },
-                { name: 'date', label: 'Дата (YYYY-MM-DD)', required: true },
-                { name: 'time', label: 'Время (HH:MM)' },
-                { name: 'description', label: 'Описание', type: 'textarea' },
-                { name: 'photo_url', label: 'Фото URL' }
-            ];
-            showForm('Редактировать событие', fields, ev);
-        });
-    });
+    const events = await adminApi('/api/admin/events');
+    const ev = events.find(e => e.id === id);
+    if (!ev) return;
+    const museums = await adminApi('/api/admin/museums');
+    const options = museums.map(m => ({ value: m.id, label: m.name }));
+    const fields = [
+        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
+        { name: 'title', label: 'Название', required: true },
+        { name: 'date', label: 'Дата (YYYY-MM-DD)', required: true },
+        { name: 'time', label: 'Время (HH:MM)' },
+        { name: 'description', label: 'Описание', type: 'textarea' },
+        { name: 'photo_url', label: 'Фото URL' }
+    ];
+    showForm('Редактировать событие', fields, ev);
 }
 
 async function deleteEvent(id) {
@@ -419,21 +295,20 @@ async function deleteEvent(id) {
     }
 }
 
-document.getElementById('addEventBtn')?.addEventListener('click', () => {
+document.getElementById('addEventBtn')?.addEventListener('click', async () => {
     editType = 'event';
     editId = null;
-    adminApi('/api/admin/museums').then(museums => {
-        const options = museums.map(m => ({ value: m.id, label: m.name }));
-        const fields = [
-            { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-            { name: 'title', label: 'Название', required: true },
-            { name: 'date', label: 'Дата (YYYY-MM-DD)', required: true },
-            { name: 'time', label: 'Время (HH:MM)' },
-            { name: 'description', label: 'Описание', type: 'textarea' },
-            { name: 'photo_url', label: 'Фото URL' }
-        ];
-        showForm('Добавить событие', fields);
-    });
+    const museums = await adminApi('/api/admin/museums');
+    const options = museums.map(m => ({ value: m.id, label: m.name }));
+    const fields = [
+        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
+        { name: 'title', label: 'Название', required: true },
+        { name: 'date', label: 'Дата (YYYY-MM-DD)', required: true },
+        { name: 'time', label: 'Время (HH:MM)' },
+        { name: 'description', label: 'Описание', type: 'textarea' },
+        { name: 'photo_url', label: 'Фото URL' }
+    ];
+    showForm('Добавить событие', fields);
 });
 
 // ------------------- УПРАВЛЕНИЕ ФОТОГРАФИЯМИ -------------------
@@ -454,8 +329,6 @@ async function loadMuseumsForPhotos() {
             if (id) loadPhotosForMuseum(id);
             else document.getElementById('photos-list-admin').innerHTML = '';
         };
-        // Если есть сохранённый выбор
-        if (select.value) loadPhotosForMuseum(select.value);
     } catch (e) {
         alert('Ошибка загрузки музеев для фото');
     }
@@ -483,7 +356,7 @@ async function loadPhotosForMuseum(museumId) {
             btn.addEventListener('click', () => deletePhoto(parseInt(btn.dataset.id), parseInt(btn.dataset.museum)));
         });
     } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки фото</p>';
+        container.innerHTML = '<p>Ошибка загрузки фото: ' + e.message + '</p>';
     }
 }
 
@@ -518,3 +391,100 @@ document.getElementById('addPhotoBtn')?.addEventListener('click', () => {
         }).catch(e => alert('Ошибка: ' + e.message));
     }
 });
+
+// ------------------- ОБЩАЯ ФУНКЦИЯ ДЛЯ ФОРМ -------------------
+function showForm(title, fields, data = null) {
+    const modal = document.getElementById('adminModal');
+    const form = document.getElementById('adminForm');
+    const titleEl = document.getElementById('adminModalTitle');
+    const container = document.getElementById('formFields');
+    container.innerHTML = '';
+    editId = data ? data.id : null;
+    titleEl.textContent = title;
+    fields.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'form-group';
+        const label = document.createElement('label');
+        label.textContent = f.label + (f.required ? ' *' : '');
+        label.htmlFor = `field_${f.name}`;
+        div.appendChild(label);
+        let input;
+        if (f.type === 'select') {
+            input = document.createElement('select');
+            input.id = `field_${f.name}`;
+            f.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.label;
+                if (data && data[f.name] == opt.value) option.selected = true;
+                input.appendChild(option);
+            });
+        } else if (f.type === 'textarea') {
+            input = document.createElement('textarea');
+            input.id = `field_${f.name}`;
+            input.rows = 3;
+            if (data && data[f.name]) input.value = data[f.name];
+        } else if (f.type === 'checkbox') {
+            input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = `field_${f.name}`;
+            if (data && data[f.name] === 'да') input.checked = true;
+        } else {
+            input = document.createElement('input');
+            input.type = f.type || 'text';
+            input.id = `field_${f.name}`;
+            if (data && data[f.name] !== undefined) input.value = data[f.name];
+            else if (f.default) input.value = f.default;
+        }
+        input.name = f.name;
+        if (f.required) input.required = true;
+        div.appendChild(input);
+        container.appendChild(div);
+    });
+    modal.classList.remove('hidden');
+    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
+    document.getElementById('cancelFormBtn').onclick = () => modal.classList.add('hidden');
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        await submitForm();
+    };
+}
+
+async function submitForm() {
+    const form = document.getElementById('adminForm');
+    const formData = new FormData(form);
+    const data = {};
+    for (let [key, value] of formData.entries()) {
+        if (key === 'pushkin_card' || key === 'visited') {
+            data[key] = value === 'on' ? 'да' : 'нет';
+        } else {
+            data[key] = value;
+        }
+    }
+    if (data.lat) data.lat = parseFloat(data.lat);
+    if (data.lng) data.lng = parseFloat(data.lng);
+    if (data.museum_id) data.museum_id = parseInt(data.museum_id);
+    if (data.rating) data.rating = parseInt(data.rating);
+
+    let url, method;
+    let entity = editType;
+    if (editId) {
+        method = 'PUT';
+        url = `/api/admin/${entity}s`;
+        data.id = editId;
+    } else {
+        method = 'POST';
+        url = `/api/admin/${entity}s`;
+    }
+    try {
+        await adminApi(url, { method, body: JSON.stringify(data) });
+        alert('Сохранено!');
+        document.getElementById('adminModal').classList.add('hidden');
+        if (entity === 'museum') loadMuseumsList();
+        else if (entity === 'exhibit') loadExhibitsList();
+        else if (entity === 'event') loadEventsList();
+        else if (entity === 'photo') loadPhotosForMuseum(document.getElementById('museumSelectPhotos').value);
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
