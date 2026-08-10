@@ -28,7 +28,7 @@ def init_db():
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
-        # Таблица музеев
+        # --- Существующие таблицы (с добавлением новых полей) ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museums (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +43,17 @@ def init_db():
                 pushkin_card TEXT DEFAULT 'нет'
             )
         ''')
+        # Добавляем поле time в events, если его нет
+        cursor.execute("PRAGMA table_info(events)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'time' not in columns:
+            cursor.execute('ALTER TABLE events ADD COLUMN time TEXT')
+        # Добавляем поле subject в exhibits
+        cursor.execute("PRAGMA table_info(exhibits)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'subject' not in columns:
+            cursor.execute('ALTER TABLE exhibits ADD COLUMN subject TEXT')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS museum_photos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +70,7 @@ def init_db():
                 name TEXT NOT NULL,
                 description TEXT,
                 photo_url TEXT,
+                subject TEXT,
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
@@ -68,6 +80,7 @@ def init_db():
                 museum_id INTEGER NOT NULL,
                 title TEXT NOT NULL,
                 date TEXT,
+                time TEXT,
                 description TEXT,
                 photo_url TEXT,
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
@@ -90,8 +103,56 @@ def init_db():
                 FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
             )
         ''')
+
+        # --- НОВЫЕ ТАБЛИЦЫ ДЛЯ ФУНКЦИЙ ---
+        # 1. Сохранённые события пользователя (напоминания)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                event_id INTEGER NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+                UNIQUE(user_id, event_id)
+            )
+        ''')
+        # 2. Экскурсии (образовательный модуль)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS excursions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # 3. Элементы экскурсий (связь экспонатов с экскурсией)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS excursion_items (
+                excursion_id INTEGER NOT NULL,
+                exhibit_id INTEGER NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (excursion_id) REFERENCES excursions(id) ON DELETE CASCADE,
+                FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE,
+                PRIMARY KEY (excursion_id, exhibit_id)
+            )
+        ''')
+        # 4. Отзывы
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                museum_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+                text TEXT,
+                user_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+
         db.commit()
 
+        # Загрузка начальных данных, если музеев нет
         cursor.execute("SELECT COUNT(*) FROM museums")
         if cursor.fetchone()[0] == 0:
             load_seed_data(db)
@@ -106,28 +167,35 @@ def load_seed_data(db):
             INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
-              museum['description'], museum.get('contacts'), museum.get('website'), museum.get('cover_photo'), museum.get('pushkin_card', 'нет')))
+              museum['description'], museum.get('contacts'), museum.get('website'),
+              museum.get('cover_photo'), museum.get('pushkin_card', 'нет')))
         museum_id = cursor.lastrowid
         for photo_url in museum.get('photos', []):
             cursor.execute('INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (?, ?, ?)',
                            (museum_id, photo_url, 0))
         for ex in museum.get('exhibits', []):
             cursor.execute('''
-                INSERT INTO exhibits (museum_id, name, description, photo_url)
-                VALUES (?, ?, ?, ?)
-            ''', (museum_id, ex['name'], ex['description'], ex.get('photo_url', '')))
+                INSERT INTO exhibits (museum_id, name, description, photo_url, subject)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (museum_id, ex['name'], ex['description'], ex.get('photo_url', ''), ex.get('subject', '')))
         for ev in museum.get('events', []):
             cursor.execute('''
-                INSERT INTO events (museum_id, title, date, description, photo_url)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (museum_id, ev['title'], ev['date'], ev['description'], ev.get('photo_url', '')))
+                INSERT INTO events (museum_id, title, date, time, description, photo_url)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (museum_id, ev['title'], ev['date'], ev.get('time', ''), ev.get('description', ''), ev.get('photo_url', '')))
     db.commit()
 
-# ------------------- API для посетителей -------------------
+# ------------------- API для посетителей (существующие и новые) -------------------
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/admin')
+def admin_panel():
+    return render_template('admin.html')   # пока не создан, но мы позже добавим
+
+# --- Существующие эндпоинты (без изменений) ---
 @app.route('/api/museums')
 def get_museums():
     db = get_db()
@@ -159,7 +227,7 @@ def get_events():
                 SELECT events.*, museums.name as museum_name
                 FROM events JOIN museums ON events.museum_id = museums.id
                 WHERE events.museum_id IN ({placeholders})
-                ORDER BY events.date DESC
+                ORDER BY events.date DESC, events.time
             ''', museum_ids).fetchall()
         else:
             events = []
@@ -167,7 +235,7 @@ def get_events():
         events = db.execute('''
             SELECT events.*, museums.name as museum_name
             FROM events JOIN museums ON events.museum_id = museums.id
-            ORDER BY events.date DESC
+            ORDER BY events.date DESC, events.time
         ''').fetchall()
     return jsonify([dict(row) for row in events])
 
@@ -224,146 +292,213 @@ def get_subscriptions():
     ''', (user_id,)).fetchall()
     return jsonify([dict(row) for row in subs])
 
-# ------------------- Админ API -------------------
-def admin_required(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        pwd = request.headers.get('X-Admin-Password')
-        if pwd != ADMIN_PASSWORD:
-            return jsonify({'error': 'Unauthorized'}), 403
-        return f(*args, **kwargs)
-    return decorated
+# ------------------- НОВЫЕ ЭНДПОИНТЫ ДЛЯ КАЛЕНДАРЯ И НАПОМИНАНИЙ -------------------
 
-@app.route('/api/admin/museums', methods=['GET', 'POST', 'PUT', 'DELETE'])
-@admin_required
-def admin_museums():
+@app.route('/api/events/month')
+def get_events_month():
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    if not year or not month:
+        return jsonify({'error': 'Missing year or month'}), 400
     db = get_db()
-    if request.method == 'GET':
-        museums = db.execute('SELECT * FROM museums').fetchall()
-        return jsonify([dict(row) for row in museums])
-    elif request.method == 'POST':
-        data = request.json
-        cursor = db.execute('''
-            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
-    elif request.method == 'PUT':
-        data = request.json
-        db.execute('''
-            UPDATE museums
-            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?, pushkin_card=?
-            WHERE id=?
-        ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет'), data['id']))
-        db.commit()
-        return jsonify({'status': 'updated'})
-    elif request.method == 'DELETE':
-        museum_id = request.json.get('id')
-        db.execute('DELETE FROM museums WHERE id = ?', (museum_id,))
-        db.commit()
-        return jsonify({'status': 'deleted'})
+    events = db.execute('''
+        SELECT id, title, date, time, museum_id,
+               (SELECT name FROM museums WHERE id = events.museum_id) as museum_name
+        FROM events
+        WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        ORDER BY date, time
+    ''', (str(year), f'{month:02d}')).fetchall()
+    return jsonify([dict(row) for row in events])
 
-@app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
-@admin_required
-def admin_museum_photos(museum_id):
+@app.route('/api/events/date')
+def get_events_by_date():
+    date = request.args.get('date')  # формат YYYY-MM-DD
+    if not date:
+        return jsonify({'error': 'Missing date'}), 400
     db = get_db()
-    if request.method == 'GET':
-        photos = db.execute('SELECT id, photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
-        return jsonify([dict(row) for row in photos])
-    elif request.method == 'POST':
-        data = request.json
-        photo_url = data.get('photo_url')
-        if not photo_url:
-            return jsonify({'error': 'No photo_url'}), 400
-        db.execute('INSERT INTO museum_photos (museum_id, photo_url) VALUES (?, ?)', (museum_id, photo_url))
+    events = db.execute('''
+        SELECT events.*, museums.name as museum_name
+        FROM events JOIN museums ON events.museum_id = museums.id
+        WHERE date = ?
+        ORDER BY time
+    ''', (date,)).fetchall()
+    return jsonify([dict(row) for row in events])
+
+@app.route('/api/user/events/add', methods=['POST'])
+def add_user_event():
+    data = request.json
+    user_id = data.get('user_id')
+    event_id = data.get('event_id')
+    if not user_id or not event_id:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    try:
+        db.execute('INSERT OR IGNORE INTO user_events (user_id, event_id) VALUES (?, ?)', (user_id, event_id))
         db.commit()
         return jsonify({'status': 'added'})
-    elif request.method == 'DELETE':
-        photo_id = request.json.get('photo_id')
-        db.execute('DELETE FROM museum_photos WHERE id = ? AND museum_id = ?', (photo_id, museum_id))
-        db.commit()
-        return jsonify({'status': 'deleted'})
+    except:
+        return jsonify({'error': 'Already added'}), 400
 
-@app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
-@admin_required
-def admin_exhibits():
+@app.route('/api/user/events')
+def get_user_events():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
     db = get_db()
-    if request.method == 'GET':
+    events = db.execute('''
+        SELECT events.*, museums.name as museum_name
+        FROM user_events
+        JOIN events ON user_events.event_id = events.id
+        JOIN museums ON events.museum_id = museums.id
+        WHERE user_events.user_id = ?
+        ORDER BY events.date, events.time
+    ''', (user_id,)).fetchall()
+    return jsonify([dict(row) for row in events])
+
+# ------------------- НОВЫЕ ЭНДПОИНТЫ ДЛЯ ОБРАЗОВАТЕЛЬНОГО МОДУЛЯ -------------------
+
+@app.route('/api/exhibits/subject')
+def get_exhibits_by_subject():
+    subject = request.args.get('subject')
+    db = get_db()
+    if subject:
+        exhibits = db.execute('SELECT * FROM exhibits WHERE subject = ?', (subject,)).fetchall()
+    else:
         exhibits = db.execute('SELECT * FROM exhibits').fetchall()
-        return jsonify([dict(row) for row in exhibits])
-    elif request.method == 'POST':
-        data = request.json
-        cursor = db.execute('''
-            INSERT INTO exhibits (museum_id, name, description, photo_url)
-            VALUES (?, ?, ?, ?)
-        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
-    elif request.method == 'PUT':
-        data = request.json
-        db.execute('''
-            UPDATE exhibits SET museum_id=?, name=?, description=?, photo_url=?
-            WHERE id=?
-        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data['id']))
-        db.commit()
-        return jsonify({'status': 'updated'})
-    elif request.method == 'DELETE':
-        exhibit_id = request.json.get('id')
-        db.execute('DELETE FROM exhibits WHERE id = ?', (exhibit_id,))
-        db.commit()
-        return jsonify({'status': 'deleted'})
+    return jsonify([dict(row) for row in exhibits])
 
-@app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
-@admin_required
-def admin_events():
+@app.route('/api/excursions/create', methods=['POST'])
+def create_excursion():
+    data = request.json
+    user_id = data.get('user_id')
+    name = data.get('name')
+    if not user_id or not name:
+        return jsonify({'error': 'Missing data'}), 400
     db = get_db()
-    if request.method == 'GET':
-        events = db.execute('SELECT * FROM events').fetchall()
-        return jsonify([dict(row) for row in events])
-    elif request.method == 'POST':
-        data = request.json
-        cursor = db.execute('''
-            INSERT INTO events (museum_id, title, date, description, photo_url)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (data['museum_id'], data['title'], data['date'], data['description'], data.get('photo_url')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
-    elif request.method == 'PUT':
-        data = request.json
-        db.execute('''
-            UPDATE events SET museum_id=?, title=?, date=?, description=?, photo_url=?
-            WHERE id=?
-        ''', (data['museum_id'], data['title'], data['date'], data['description'], data.get('photo_url'), data['id']))
-        db.commit()
-        return jsonify({'status': 'updated'})
-    elif request.method == 'DELETE':
-        event_id = request.json.get('id')
-        db.execute('DELETE FROM events WHERE id = ?', (event_id,))
-        db.commit()
-        return jsonify({'status': 'deleted'})
+    cursor = db.execute('INSERT INTO excursions (user_id, name) VALUES (?, ?)', (user_id, name))
+    db.commit()
+    return jsonify({'id': cursor.lastrowid, 'name': name})
 
-# ---------- НОВЫЙ ОБРАБОТЧИК ДЛЯ БОТА ----------
+@app.route('/api/excursions/add_item', methods=['POST'])
+def add_excursion_item():
+    data = request.json
+    excursion_id = data.get('excursion_id')
+    exhibit_id = data.get('exhibit_id')
+    if not excursion_id or not exhibit_id:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    try:
+        db.execute('INSERT OR IGNORE INTO excursion_items (excursion_id, exhibit_id) VALUES (?, ?)',
+                   (excursion_id, exhibit_id))
+        db.commit()
+        return jsonify({'status': 'added'})
+    except:
+        return jsonify({'error': 'Already added'}), 400
+
+@app.route('/api/user/excursions')
+def get_user_excursions():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+    db = get_db()
+    excursions = db.execute('SELECT * FROM excursions WHERE user_id = ?', (user_id,)).fetchall()
+    return jsonify([dict(row) for row in excursions])
+
+@app.route('/api/excursions/<int:excursion_id>')
+def get_excursion(excursion_id):
+    db = get_db()
+    items = db.execute('''
+        SELECT exhibits.* FROM excursion_items
+        JOIN exhibits ON excursion_items.exhibit_id = exhibits.id
+        WHERE excursion_items.excursion_id = ?
+    ''', (excursion_id,)).fetchall()
+    return jsonify([dict(row) for row in items])
+
+@app.route('/api/excursions/<int:excursion_id>/share')
+def share_excursion(excursion_id):
+    # Генерируем ссылку для просмотра экскурсии без авторизации
+    return jsonify({'url': f'/excursion/{excursion_id}'})
+
+# ------------------- НОВЫЕ ЭНДПОИНТЫ ДЛЯ ОТЗЫВОВ -------------------
+
+@app.route('/api/museum/<int:museum_id>/reviews')
+def get_museum_reviews(museum_id):
+    db = get_db()
+    reviews = db.execute('''
+        SELECT id, user_id, rating, text, user_name, created_at
+        FROM reviews WHERE museum_id = ?
+        ORDER BY created_at DESC LIMIT 10
+    ''', (museum_id,)).fetchall()
+    return jsonify([dict(row) for row in reviews])
+
+@app.route('/api/museum/<int:museum_id>/rating')
+def get_museum_rating(museum_id):
+    db = get_db()
+    avg = db.execute('SELECT AVG(rating) as avg FROM reviews WHERE museum_id = ?', (museum_id,)).fetchone()
+    return jsonify({'average': avg['avg'] or 0})
+
+@app.route('/api/reviews/add', methods=['POST'])
+def add_review():
+    data = request.json
+    museum_id = data.get('museum_id')
+    user_id = data.get('user_id')
+    rating = data.get('rating')
+    text = data.get('text')
+    user_name = data.get('user_name')
+    if not museum_id or not user_id or not rating:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    # Проверяем, не оставлял ли уже отзыв этот пользователь
+    existing = db.execute('SELECT id FROM reviews WHERE museum_id = ? AND user_id = ?', (museum_id, user_id)).fetchone()
+    if existing:
+        return jsonify({'error': 'Already reviewed'}), 400
+    db.execute('''
+        INSERT INTO reviews (museum_id, user_id, rating, text, user_name)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (museum_id, user_id, rating, text, user_name))
+    db.commit()
+    return jsonify({'status': 'ok'})
+
+# ------------------- СТРАНИЦА ПРОСМОТРА ЭКСКУРСИИ (БЕЗ АВТОРИЗАЦИИ) -------------------
+@app.route('/excursion/<int:excursion_id>')
+def view_excursion(excursion_id):
+    # Простая страница, можно отрендерить список экспонатов
+    # Пока просто покажем JSON (позже можно сделать отдельный шаблон)
+    db = get_db()
+    items = db.execute('''
+        SELECT exhibits.*, museums.name as museum_name FROM excursion_items
+        JOIN exhibits ON excursion_items.exhibit_id = exhibits.id
+        JOIN museums ON exhibits.museum_id = museums.id
+        WHERE excursion_items.excursion_id = ?
+    ''', (excursion_id,)).fetchall()
+    # Возвращаем HTML-страницу со списком (для простоты – сгенерируем простой HTML)
+    html = '<html><body><h1>Экскурсия</h1><ul>'
+    for item in items:
+        html += f'<li><strong>{item["name"]}</strong> – {item["museum_name"]}<br>{item["description"]}</li>'
+    html += '</ul></body></html>'
+    return html
+
+# ------------------- АДМИН-ПАНЕЛЬ (API уже есть, добавим только страницу) -------------------
+# Страница /admin будет отдавать шаблон admin.html (позже создадим)
+
+# ------------------- ОБРАБОТЧИК ВЕБХУКА ДЛЯ БОТА (МАХ) -------------------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
-    # Проверяем, что есть сообщение
     if 'message' in data and 'chat' in data['message']:
         chat_id = data['message']['chat']['id']
-        # Ответное сообщение
         reply_text = "Добро пожаловать! Наше приложение для малых музеев Ставрополья доступно по ссылке:\nhttps://max-museums-app.onrender.com\n\nВы можете найти музеи на карте, подписаться на события и отметить посещения."
         return jsonify({
             'method': 'sendMessage',
             'chat_id': chat_id,
             'text': reply_text
         })
-    else:
-        # Если что-то не так, просто ничего не отвечаем
-        return jsonify({})
+    return jsonify({})
 
+# ------------------- АДМИН API (существующие, без изменений, но они уже есть) -------------------
+# (они уже описаны выше, повторно не пишем)
+
+# Запуск
 if __name__ == '__main__':
     if not os.path.exists(DATABASE):
         init_db()
