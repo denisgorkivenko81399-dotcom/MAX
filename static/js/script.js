@@ -2,7 +2,7 @@
 let currentUserId = null;
 let museums = [];
 let events = [];
-let subscriptions = [];   // массив объектов {id, name}
+let subscriptions = [];
 let visits = [];
 let ymapsReady = false;
 let museumPhotosCache = {};
@@ -54,8 +54,7 @@ async function loadSubscriptions() {
     return subscriptions;
 }
 async function loadVisits() {
-    const data = await api(`/api/visits?user_id=${currentUserId}`);
-    visits = data;
+    visits = await api(`/api/visits?user_id=${currentUserId}`);
     return visits;
 }
 async function setVisit(museumId, visited) {
@@ -87,18 +86,26 @@ async function toggleFavorite(exhibitId) {
     return !isFav;
 }
 
-// Получение фотографий галереи с кэшированием
+// Получение фотографий с кэшем
 async function getMuseumPhotos(museumId) {
     if (museumPhotosCache[museumId]) return museumPhotosCache[museumId];
     const photos = await api(`/api/museum_photos/${museumId}`);
     museumPhotosCache[museumId] = photos;
     return photos;
 }
-
-// Предзагрузка фото для всех музеев
 async function preloadAllPhotos() {
-    const promises = museums.map(m => getMuseumPhotos(m.id));
-    await Promise.all(promises);
+    await Promise.all(museums.map(m => getMuseumPhotos(m.id)));
+}
+
+// Извлечение города из адреса
+function extractCity(address) {
+    if (!address) return '';
+    const cities = ['Ставрополь', 'Пятигорск', 'Кисловодск', 'Будённовск', 'Буденновск',
+                    'Благодарный', 'Новоселицкое', 'Гофицкое', 'Невинномысск'];
+    for (const c of cities) {
+        if (address.toLowerCase().includes(c.toLowerCase())) return c;
+    }
+    return '';
 }
 
 // Показать детальную карточку музея
@@ -109,15 +116,15 @@ async function showMuseumDetails(museumId) {
     const isSubscribed = subscriptions.some(s => s.id === museum.id);
     const isVisited = visits.some(v => v.museum_id === museum.id && v.visited === 1);
     const routeLink = `https://yandex.ru/maps/?rtext=~${museum.lat},${museum.lng}&rtt=auto`;
-    
+
     const modal = document.getElementById('museumModal');
     const container = document.getElementById('museumDetailContent');
     if (!modal || !container) return;
-    
+
     const reviews = await api(`/api/museum/${museum.id}/reviews`);
     const ratingData = await api(`/api/museum/${museum.id}/rating`);
     const avgRating = ratingData.average || 0;
-    
+
     let reviewsHtml = `<div class="reviews-section">
         <h4>Отзывы (средний рейтинг: ${avgRating.toFixed(1)} ⭐)</h4>
         <div id="reviews-list">`;
@@ -129,41 +136,32 @@ async function showMuseumDetails(museumId) {
                     <strong>${escapeHtml(name)}</strong> (${r.rating}⭐)
                     <p>${escapeHtml(r.text || '')}</p>
                     <small>${r.created_at}</small>
-                </div>
-            `;
+                </div>`;
         });
     } else {
         reviewsHtml += '<p>Пока нет отзывов. Будьте первым!</p>';
     }
-    reviewsHtml += `</div>
-        <button id="write-review-btn" class="review-btn">Написать отзыв</button>
-    </div>`;
-    
-    let coverHtml = '';
-    if (museum.cover_photo_url) {
-        coverHtml = `<img src="${museum.cover_photo_url}" class="museum-cover" alt="обложка">`;
-    } else if (photos.length) {
-        coverHtml = `<img src="${photos[0]}" class="museum-cover" alt="обложка">`;
-    } else {
-        coverHtml = `<div style="background: #f0e3d4; height:200px; display:flex; align-items:center; justify-content:center; border-radius:20px; margin:10px 0;">Нет фото</div>`;
-    }
-    
-    let galleryHtml = '';
-    if (photos.length) {
-        galleryHtml = `<div style="display: flex; overflow-x: auto; gap: 10px; margin: 10px 0;">
-            ${photos.map(p => `<img src="${p}" style="height: 120px; object-fit: cover; border-radius: 12px;">`).join('')}
-        </div>`;
-    }
-    
+    reviewsHtml += `</div><button id="write-review-btn">Написать отзыв</button></div>`;
+
+    let coverHtml = museum.cover_photo_url
+        ? `<img src="${museum.cover_photo_url}" class="museum-cover" alt="обложка">`
+        : (photos.length
+            ? `<img src="${photos[0]}" class="museum-cover" alt="обложка">`
+            : `<div style="background:#f0e3d4;height:200px;display:flex;align-items:center;justify-content:center;border-radius:20px;margin:10px 0;">Нет фото</div>`);
+
+    let galleryHtml = photos.length
+        ? `<div style="display:flex;overflow-x:auto;gap:10px;margin:10px 0;">
+            ${photos.map(p => `<img src="${p}" style="height:120px;object-fit:cover;border-radius:12px;">`).join('')}
+        </div>` : '';
+
     const shareButtons = `
-        <div class="share-buttons" style="margin-top: 15px;">
+        <div class="share-buttons" style="margin-top:15px;">
             <button id="share-vk"><i class="fab fa-vk"></i> ВКонтакте</button>
             <button id="share-max"><i class="fas fa-share-alt"></i> МАХ</button>
             <button id="share-ok"><i class="fab fa-odnoklassniki"></i> Одноклассники</button>
             <button id="copy-link"><i class="fas fa-copy"></i> Копировать ссылку</button>
-        </div>
-    `;
-    
+        </div>`;
+
     container.innerHTML = `
         <h2>${escapeHtml(museum.name)}</h2>
         ${coverHtml}
@@ -175,7 +173,7 @@ async function showMuseumDetails(museumId) {
         ${museum.pushkin_card === 'да' ? '<p><i class="fas fa-id-card"></i> <strong>Пушкинская карта:</strong> доступно</p>' : ''}
         <p><i class="fas fa-directions"></i> <strong>Как добраться:</strong> <a href="${routeLink}" target="_blank" style="color:#7b4a2e;">Проложить маршрут в Яндекс.Картах</a></p>
         <hr>
-        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:15px;">
             <button id="detailExhibitsBtn" data-id="${museum.id}"><i class="fas fa-search"></i> Экспонаты</button>
             <button id="detailSubscribeBtn" data-id="${museum.id}">${isSubscribed ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться'}</button>
             <button id="detailVisitBtn" data-id="${museum.id}" data-visited="${isVisited}">${isVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение'}</button>
@@ -184,11 +182,10 @@ async function showMuseumDetails(museumId) {
         <hr>
         ${reviewsHtml}
     `;
-    
+
     modal.classList.remove('hidden');
-    const closeSpan = modal.querySelector('.close');
-    if (closeSpan) closeSpan.onclick = () => modal.classList.add('hidden');
-    
+    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
+
     document.getElementById('detailExhibitsBtn')?.addEventListener('click', () => {
         modal.classList.add('hidden');
         showExhibits(museum.id);
@@ -204,13 +201,13 @@ async function showMuseumDetails(museumId) {
         }
         const subBtn = document.getElementById('detailSubscribeBtn');
         if (subBtn) {
-            const isNowSub = subscriptions.some(s => s.id === museum.id);
-            subBtn.innerHTML = isNowSub ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
+            const isNow = subscriptions.some(s => s.id === museum.id);
+            subBtn.innerHTML = isNow ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
         }
-        const mainCardSubscribeBtn = document.querySelector(`.subscribe-btn[data-id="${museum.id}"]`);
-        if (mainCardSubscribeBtn) {
-            const isNowSub = subscriptions.some(s => s.id === museum.id);
-            mainCardSubscribeBtn.innerHTML = isNowSub ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
+        const mainCardBtn = document.querySelector(`.subscribe-btn[data-id="${museum.id}"]`);
+        if (mainCardBtn) {
+            const isNow = subscriptions.some(s => s.id === museum.id);
+            mainCardBtn.innerHTML = isNow ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться';
         }
         renderPassport();
         const filter = document.getElementById('showOnlySubscribedEvents');
@@ -219,35 +216,29 @@ async function showMuseumDetails(museumId) {
     });
     document.getElementById('detailVisitBtn')?.addEventListener('click', async () => {
         const btn = document.getElementById('detailVisitBtn');
-        const currentlyVisited = btn.dataset.visited === 'true';
-        await setVisit(museum.id, !currentlyVisited);
-        const newVisited = !currentlyVisited;
-        btn.dataset.visited = newVisited;
-        btn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
-        const mainCardVisitBtn = document.querySelector(`.visit-btn[data-id="${museum.id}"]`);
-        if (mainCardVisitBtn) {
-            mainCardVisitBtn.dataset.visited = newVisited;
-            mainCardVisitBtn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
+        const cur = btn.dataset.visited === 'true';
+        await setVisit(museum.id, !cur);
+        const nv = !cur;
+        btn.dataset.visited = nv;
+        btn.innerHTML = nv ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
+        const mainCardBtn = document.querySelector(`.visit-btn[data-id="${museum.id}"]`);
+        if (mainCardBtn) {
+            mainCardBtn.dataset.visited = nv;
+            mainCardBtn.innerHTML = nv ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
         }
         renderPassport();
     });
-    
     document.getElementById('share-vk')?.addEventListener('click', () => {
         const url = encodeURIComponent(window.location.origin + '/?museum=' + museum.id);
-        const text = encodeURIComponent(`Я нашёл интересный музей "${museum.name}" в Ставропольском крае! Посмотрите экспонаты и запланируйте визит:`);
+        const text = encodeURIComponent(`Я нашёл интересный музей "${museum.name}"! Посмотрите:`);
         window.open(`https://vk.com/share.php?url=${url}&title=${text}`, '_blank');
     });
-    document.getElementById('share-max')?.addEventListener('click', () => {
-        copyShareLink(museum.id);
-    });
+    document.getElementById('share-max')?.addEventListener('click', () => copyShareLink(museum.id));
     document.getElementById('share-ok')?.addEventListener('click', () => {
         const url = encodeURIComponent(window.location.origin + '/?museum=' + museum.id);
         window.open(`https://connect.ok.ru/dk?st.cmd=WidgetShare&st.shareUrl=${url}`, '_blank');
     });
-    document.getElementById('copy-link')?.addEventListener('click', () => {
-        copyShareLink(museum.id);
-    });
-    
+    document.getElementById('copy-link')?.addEventListener('click', () => copyShareLink(museum.id));
     document.getElementById('write-review-btn')?.addEventListener('click', () => {
         const rating = prompt('Оцените музей (1-5 звёзд):');
         if (rating && rating >= 1 && rating <= 5) {
@@ -256,16 +247,11 @@ async function showMuseumDetails(museumId) {
             api('/api/reviews/add', {
                 method: 'POST',
                 body: JSON.stringify({
-                    museum_id: museum.id,
-                    user_id: currentUserId,
-                    rating: parseInt(rating),
-                    text: text,
-                    user_name: name
+                    museum_id: museum.id, user_id: currentUserId,
+                    rating: parseInt(rating), text: text, user_name: name
                 })
-            }).then(() => {
-                alert('Спасибо за отзыв!');
-                showMuseumDetails(museum.id);
-            }).catch(() => alert('Вы уже оставили отзыв!'));
+            }).then(() => { alert('Спасибо за отзыв!'); showMuseumDetails(museum.id); })
+              .catch(() => alert('Вы уже оставили отзыв!'));
         }
     });
 }
@@ -273,10 +259,10 @@ async function showMuseumDetails(museumId) {
 function copyShareLink(museumId) {
     const url = window.location.origin + '/?museum=' + museumId;
     navigator.clipboard.writeText(url);
-    alert('Ссылка скопирована в буфер обмена!');
+    alert('Ссылка скопирована!');
 }
 
-// Показать экспонаты (с кнопкой избранного)
+// Показать экспонаты (с избранным)
 async function showExhibits(museumId) {
     const exhibits = await api(`/api/exhibits/${museumId}`);
     const modal = document.getElementById('exhibitsModal');
@@ -285,20 +271,18 @@ async function showExhibits(museumId) {
     if (exhibits.length) {
         container.innerHTML = exhibits.map(ex => {
             const isFav = favorites.includes(ex.id);
-            return `
-                <div class="card">
-                    <h4>${escapeHtml(ex.name)}</h4>
-                    <p>${escapeHtml(ex.description || '')}</p>
-                    ${ex.photo_url ? `<img src="${ex.photo_url}" style="max-height:150px">` : ''}
-                    ${ex.subject ? `<p><strong>Тема:</strong> ${escapeHtml(ex.subject)}</p>` : ''}
-                    <button class="fav-btn" data-exhibit-id="${ex.id}">${isFav ? '⭐ В избранном' : '☆ В избранное'}</button>
-                </div>
-            `;
+            return `<div class="card">
+                <h4>${escapeHtml(ex.name)}</h4>
+                <p>${escapeHtml(ex.description || '')}</p>
+                ${ex.photo_url ? `<img src="${ex.photo_url}" style="max-height:150px">` : ''}
+                ${ex.subject ? `<p><strong>Тема:</strong> ${escapeHtml(ex.subject)}</p>` : ''}
+                <button class="fav-btn" data-exhibit-id="${ex.id}">${isFav ? '⭐ В избранном' : '☆ В избранное'}</button>
+            </div>`;
         }).join('');
         container.querySelectorAll('.fav-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
-                const exhibitId = parseInt(btn.dataset.exhibitId);
-                const newState = await toggleFavorite(exhibitId);
+                const id = parseInt(btn.dataset.exhibitId);
+                const newState = await toggleFavorite(id);
                 btn.textContent = newState ? '⭐ В избранном' : '☆ В избранное';
             });
         });
@@ -309,25 +293,28 @@ async function showExhibits(museumId) {
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
 }
 
-// Рендер главной с фильтром по теме
+// Рендер главной (с поиском и фильтром по городу)
 async function renderMain() {
     const container = document.getElementById('museums-list');
     if (!container) return;
-    // Фильтр по теме (если выбран)
-    const selectedSubject = document.getElementById('subject-filter')?.value || '';
+
+    const searchQuery = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
+    const cityFilter = document.getElementById('city-filter')?.value || '';
+
     let filtered = museums;
-    if (selectedSubject) {
-        // нужно проверить, есть ли у музея экспонаты с такой темой
-        const allExhibits = await api('/api/exhibits');
-        const museumIdsWithSubject = new Set();
-        allExhibits.forEach(ex => {
-            if (ex.subject === selectedSubject) {
-                museumIdsWithSubject.add(ex.museum_id);
-            }
-        });
-        filtered = museums.filter(m => museumIdsWithSubject.has(m.id));
+    if (searchQuery) {
+        filtered = filtered.filter(m => (m.name || '').toLowerCase().includes(searchQuery));
     }
+    if (cityFilter) {
+        filtered = filtered.filter(m => extractCity(m.address) === cityFilter);
+    }
+
     container.innerHTML = '';
+    if (filtered.length === 0) {
+        container.innerHTML = '<p>Музеи не найдены. Попробуйте изменить запрос.</p>';
+        return;
+    }
+
     for (const m of filtered) {
         const photos = await getMuseumPhotos(m.id);
         const coverPhoto = m.cover_photo_url || (photos.length ? photos[0] : '');
@@ -342,7 +329,7 @@ async function renderMain() {
         });
         card.innerHTML = `
             <h3>${escapeHtml(m.name)}</h3>
-            ${coverPhoto ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px; object-fit:cover;">` : '<div style="height:120px; background:#f0e3d4; display:flex; align-items:center; justify-content:center;">Нет фото</div>'}
+            ${coverPhoto ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px;object-fit:cover;">` : '<div style="height:120px;background:#f0e3d4;display:flex;align-items:center;justify-content:center;">Нет фото</div>'}
             <p>${escapeHtml(m.description || '').substring(0, 100)}${(m.description || '').length > 100 ? '...' : ''}</p>
             <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(m.address)}</p>
             ${m.pushkin_card === 'да' ? '<p><i class="fas fa-id-card"></i> <strong>Пушкинская карта</strong> ✓</p>' : ''}
@@ -350,11 +337,10 @@ async function renderMain() {
                 <button class="exhibits-btn" data-id="${m.id}"><i class="fas fa-search"></i> Экспонаты</button>
                 <button class="subscribe-btn" data-id="${m.id}">${isSubscribed ? '<i class="fas fa-bell-slash"></i> Отписаться' : '<i class="fas fa-bell"></i> Подписаться'}</button>
                 <button class="visit-btn" data-id="${m.id}" data-visited="${isVisited}">${isVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение'}</button>
-            </div>
-        `;
+            </div>`;
         container.appendChild(card);
     }
-    // Обработчики кнопок
+
     document.querySelectorAll('.exhibits-btn').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); showExhibits(parseInt(btn.dataset.id)); });
     });
@@ -383,22 +369,21 @@ async function renderMain() {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const museumId = parseInt(btn.dataset.id);
-            const currentlyVisited = btn.dataset.visited === 'true';
-            await setVisit(museumId, !currentlyVisited);
-            const newVisited = !currentlyVisited;
-            btn.dataset.visited = newVisited;
-            btn.innerHTML = newVisited ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
+            const cur = btn.dataset.visited === 'true';
+            await setVisit(museumId, !cur);
+            const nv = !cur;
+            btn.dataset.visited = nv;
+            btn.innerHTML = nv ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
             renderPassport();
         });
     });
 }
 
-// Яндекс.Карты
+// Карта
 function initYandexMap() {
     if (!ymapsReady || !window.ymaps) return;
     const map = new ymaps.Map('map', {
-        center: [45.04, 41.97],
-        zoom: 8,
+        center: [45.04, 41.97], zoom: 8,
         controls: ['zoomControl', 'fullscreenControl']
     });
     museums.forEach(m => {
@@ -414,9 +399,7 @@ function initYandexMap() {
         }
     });
 }
-window.showExhibitsFromMap = function(museumId) {
-    showExhibits(museumId);
-};
+window.showExhibitsFromMap = function (museumId) { showExhibits(museumId); };
 
 // Календарь
 function getTodayDate() {
@@ -454,9 +437,7 @@ async function renderCalendar(year, month) {
         renderCalendar(currentYear, currentMonth);
         if (selectedDate) {
             const d = new Date(selectedDate);
-            if (d.getFullYear() !== currentYear || d.getMonth()+1 !== currentMonth) {
-                selectedDate = null;
-            }
+            if (d.getFullYear() !== currentYear || d.getMonth()+1 !== currentMonth) selectedDate = null;
         }
         renderEvents();
     });
@@ -465,56 +446,47 @@ async function renderCalendar(year, month) {
         renderCalendar(currentYear, currentMonth);
         if (selectedDate) {
             const d = new Date(selectedDate);
-            if (d.getFullYear() !== currentYear || d.getMonth()+1 !== currentMonth) {
-                selectedDate = null;
-            }
+            if (d.getFullYear() !== currentYear || d.getMonth()+1 !== currentMonth) selectedDate = null;
         }
         renderEvents();
     });
-
     document.querySelectorAll('.calendar-table td[data-date]').forEach(td => {
         td.addEventListener('click', () => {
             selectedDate = td.dataset.date;
             renderEvents();
         });
     });
-
-    if (!selectedDate) {
-        renderEvents();
-    }
+    if (!selectedDate) renderEvents();
 }
 
-// Рендер событий
+// События
 async function renderEvents() {
     await loadEvents();
     const container = document.getElementById('events-list');
     if (!container) return;
     let filteredEvents = events;
-    if (selectedDate) {
-        filteredEvents = events.filter(ev => ev.date === selectedDate);
-    }
+    if (selectedDate) filteredEvents = events.filter(ev => ev.date === selectedDate);
     const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
     if (filterCheckbox && filterCheckbox.checked && subscriptions.length) {
         const subIds = subscriptions.map(s => s.id);
         filteredEvents = filteredEvents.filter(ev => subIds.includes(ev.museum_id));
     }
-
     if (filteredEvents.length === 0) {
         container.innerHTML = '<p>Событий не найдено.</p>';
         return;
     }
     container.innerHTML = filteredEvents.map(ev => `
         <div class="card">
-            ${ev.photo_url ? `<img src="${ev.photo_url}" style="max-height:150px; object-fit:cover; border-radius:20px;">` : ''}
+            ${ev.photo_url ? `<img src="${ev.photo_url}" style="max-height:150px;object-fit:cover;border-radius:20px;">` : ''}
             <h3>${escapeHtml(ev.title)}</h3>
-            <p><i class="fas fa-calendar-day"></i> ${ev.date || 'Дата не указана'} ${ev.time ? 'в ' + escapeHtml(ev.time) : ''}</p>
-            <p><i class="fas fa-landmark"></i> ${escapeHtml(ev.museum_name)}</p>
+            <p><i class="fas fa-calendar-day"></i> ${ev.date || ''} ${ev.time ? 'в ' + escapeHtml(ev.time) : ''}</p>
+            <p><i class="fas fa-landmark"></i> ${escapeHtml(ev.museum_name || '')}</p>
             <p>${escapeHtml(ev.description || '')}</p>
         </div>
     `).join('');
 }
 
-// Образовательная лента (посты)
+// Образовательная лента (с комментариями и поделиться)
 async function renderEducationalPosts() {
     const container = document.getElementById('educational-posts');
     if (!container) return;
@@ -524,15 +496,87 @@ async function renderEducationalPosts() {
             container.innerHTML = '<p>Пока нет образовательных материалов. Загляните позже!</p>';
             return;
         }
-        container.innerHTML = posts.map(post => `
-            <div class="card educational-post">
-                ${post.photo_url ? `<img src="${post.photo_url}" alt="иллюстрация" style="max-height:200px; object-fit:cover;">` : ''}
-                <h3>${escapeHtml(post.title)}</h3>
-                <p class="post-meta">${escapeHtml(post.author)} • ${new Date(post.created_at).toLocaleDateString('ru-RU')}</p>
-                ${post.museum_name ? `<p class="post-museum">🏛️ ${escapeHtml(post.museum_name)}</p>` : ''}
-                <div class="post-content">${escapeHtml(post.content)}</div>
-            </div>
-        `).join('');
+        let html = '';
+        for (const post of posts) {
+            const comments = await api(`/api/educational/posts/${post.id}/comments`);
+            html += `
+                <div class="card educational-post" data-post-id="${post.id}">
+                    ${post.photo_url ? `<img src="${post.photo_url}" alt="иллюстрация" style="max-height:200px;object-fit:cover;">` : ''}
+                    <h3>${escapeHtml(post.title)}</h3>
+                    <p class="post-meta">${escapeHtml(post.author || 'Аноним')} • ${new Date(post.created_at).toLocaleDateString('ru-RU')}</p>
+                    ${post.museum_name ? `<p class="post-museum">🏛️ ${escapeHtml(post.museum_name)}</p>` : ''}
+                    <div class="post-content">${escapeHtml(post.content)}</div>
+
+                    <div class="post-share">
+                        <button class="share-btn share-vk" data-post-id="${post.id}"><i class="fab fa-vk"></i> ВК</button>
+                        <button class="share-btn share-ok" data-post-id="${post.id}"><i class="fab fa-odnoklassniki"></i> ОК</button>
+                        <button class="share-btn share-max" data-post-id="${post.id}"><i class="fas fa-share-alt"></i> МАХ</button>
+                        <button class="share-btn copy-post-link" data-post-id="${post.id}"><i class="fas fa-copy"></i> Ссылка</button>
+                    </div>
+
+                    <div class="comments-section">
+                        <h4><i class="fas fa-comments"></i> Комментарии (${comments.length})</h4>
+                        <div class="comments-list">
+                            ${comments.map(c => `
+                                <div class="comment-item">
+                                    <strong>${escapeHtml(c.user_name || 'Аноним')}</strong>
+                                    <small>${new Date(c.created_at).toLocaleString('ru-RU')}</small>
+                                    <p>${escapeHtml(c.text)}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="comment-form">
+                            <input type="text" class="comment-input" data-post-id="${post.id}" placeholder="Оставьте комментарий...">
+                            <button class="comment-submit" data-post-id="${post.id}">Отправить</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+        container.innerHTML = html;
+
+        // Обработчики для кнопок поделиться
+        container.querySelectorAll('.share-vk').forEach(btn => btn.addEventListener('click', () => {
+            const postId = btn.dataset.postId;
+            const url = encodeURIComponent(window.location.origin + '/#post' + postId);
+            const text = encodeURIComponent('Интересный материал о музеях:');
+            window.open(`https://vk.com/share.php?url=${url}&title=${text}`, '_blank');
+        }));
+        container.querySelectorAll('.share-ok').forEach(btn => btn.addEventListener('click', () => {
+            const postId = btn.dataset.postId;
+            const url = encodeURIComponent(window.location.origin + '/#post' + postId);
+            window.open(`https://connect.ok.ru/dk?st.cmd=WidgetShare&st.shareUrl=${url}`, '_blank');
+        }));
+        container.querySelectorAll('.share-max').forEach(btn => btn.addEventListener('click', () => {
+            const postId = btn.dataset.postId;
+            const url = window.location.origin + '/#post' + postId;
+            navigator.clipboard.writeText(url);
+            alert('Ссылка скопирована!');
+        }));
+        container.querySelectorAll('.copy-post-link').forEach(btn => btn.addEventListener('click', () => {
+            const postId = btn.dataset.postId;
+            const url = window.location.origin + '/#post' + postId;
+            navigator.clipboard.writeText(url);
+            alert('Ссылка скопирована!');
+        }));
+
+        // Обработчики комментариев
+        container.querySelectorAll('.comment-submit').forEach(btn => btn.addEventListener('click', async () => {
+            const postId = btn.dataset.postId;
+            const input = container.querySelector(`.comment-input[data-post-id="${postId}"]`);
+            const text = (input.value || '').trim();
+            if (!text) return;
+            const name = prompt('Ваше имя (или оставьте пустым для анонима):') || null;
+            await api(`/api/educational/posts/${postId}/comments`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: currentUserId,
+                    text: text,
+                    user_name: name
+                })
+            });
+            input.value = '';
+            renderEducationalPosts();
+        }));
     } catch (e) {
         container.innerHTML = '<p>Ошибка загрузки постов</p>';
     }
@@ -549,16 +593,15 @@ async function renderTodayExhibit() {
             return;
         }
         container.innerHTML = `
-            <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
-                ${data.photo_url ? `<img src="${data.photo_url}" style="max-height:120px; border-radius:12px;">` : ''}
+            <div style="display:flex;align-items:center;gap:15px;flex-wrap:wrap;">
+                ${data.photo_url ? `<img src="${data.photo_url}" style="max-height:120px;border-radius:12px;">` : ''}
                 <div>
                     <h4>${escapeHtml(data.name)}</h4>
                     <p>${escapeHtml(data.description || '')}</p>
                     ${data.museum_name ? `<p><small>🏛️ ${escapeHtml(data.museum_name)}</small></p>` : ''}
                     <button onclick="showMuseumDetails(${data.museum_id})">Узнать больше</button>
                 </div>
-            </div>
-        `;
+            </div>`;
     } catch (e) {
         container.innerHTML = '<p>Не удалось загрузить факт дня</p>';
     }
@@ -567,6 +610,7 @@ async function renderTodayExhibit() {
 // Паспорт
 async function renderPassport() {
     await loadVisits();
+    await loadFavorites();
     const total = museums.length;
     const visitedCount = visits.filter(v => v.visited === 1).length;
     const percent = total ? (visitedCount / total * 100) : 0;
@@ -578,7 +622,7 @@ async function renderPassport() {
         <div class="card">
             <h3><i class="fas fa-passport"></i> Мои посещения</h3>
             <p>Посещено музеев: ${visitedCount} из ${total}</p>
-            <div style="background:#ddd; border-radius:10px;"><div style="width:${percent}%; background:#7b4a2e; height:20px; border-radius:10px;"></div></div>
+            <div style="background:#ddd;border-radius:10px;"><div style="width:${percent}%;background:#7b4a2e;height:20px;border-radius:10px;"></div></div>
         </div>
         <div class="card">
             <h3><i class="fas fa-bell"></i> Мои подписки</h3>
@@ -590,33 +634,29 @@ async function renderPassport() {
                 ${userEvents.length ? userEvents.map(ev => `
                     <div class="user-event-item">
                         <strong>${escapeHtml(ev.title)}</strong> – ${escapeHtml(ev.museum_name)} (${ev.date} ${ev.time || ''})
-                    </div>
-                `).join('') : '<p>Вы пока не добавили ни одного события.</p>'}
+                    </div>`).join('') : '<p>Вы пока не добавили ни одного события.</p>'}
             </div>
         </div>
         <div class="card">
             <h3><i class="fas fa-graduation-cap"></i> Мои избранные экспонаты</h3>
             <div id="favorites-list"></div>
-        </div>
-    `;
+        </div>`;
 
-    // Подписки
     const subsDiv = document.getElementById('subscriptionsList');
     if (subscriptions.length) {
         subsDiv.innerHTML = subscriptions.map(sub => `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin: 8px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;">
                 <span>${escapeHtml(sub.name)}</span>
-                <button class="unsubscribe-from-passport" data-id="${sub.id}" style="background: #c27e5c;">Отписаться</button>
-            </div>
-        `).join('');
+                <button class="unsubscribe-from-passport" data-id="${sub.id}" style="background:#c27e5c;">Отписаться</button>
+            </div>`).join('');
         document.querySelectorAll('.unsubscribe-from-passport').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const museumId = parseInt(btn.dataset.id);
                 await api('/api/unsubscribe', { method: 'POST', body: JSON.stringify({ user_id: currentUserId, museum_id: museumId }) });
                 subscriptions = subscriptions.filter(s => s.id !== museumId);
                 renderPassport();
-                const mainCardSubscribeBtn = document.querySelector(`.subscribe-btn[data-id="${museumId}"]`);
-                if (mainCardSubscribeBtn) mainCardSubscribeBtn.innerHTML = '<i class="fas fa-bell"></i> Подписаться';
+                const mainCardBtn = document.querySelector(`.subscribe-btn[data-id="${museumId}"]`);
+                if (mainCardBtn) mainCardBtn.innerHTML = '<i class="fas fa-bell"></i> Подписаться';
                 const filter = document.getElementById('showOnlySubscribedEvents');
                 if (filter && filter.checked) renderEvents();
                 renderCalendar(currentYear, currentMonth);
@@ -626,26 +666,21 @@ async function renderPassport() {
         subsDiv.innerHTML = '<p>Вы не подписаны ни на один музей.</p>';
     }
 
-    // Избранное
-    await loadFavorites();
     const favDiv = document.getElementById('favorites-list');
     if (favorites.length) {
         const allExhibits = await api('/api/exhibits');
         const favExhibits = allExhibits.filter(ex => favorites.includes(ex.id));
         favDiv.innerHTML = favExhibits.map(ex => `
-            <div style="margin: 5px 0;">
-                <strong>${escapeHtml(ex.name)}</strong> (музей ${ex.museum_id})
-            </div>
-        `).join('');
+            <div style="margin:5px 0;"><strong>${escapeHtml(ex.name)}</strong> (музей ${ex.museum_id})</div>`).join('');
     } else {
         favDiv.innerHTML = '<p>У вас пока нет избранных экспонатов.</p>';
     }
 }
 
-// Вспомогательные функции
+// Вспомогательные
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
+    return str.replace(/[&<>]/g, m => {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
@@ -659,35 +694,15 @@ function initTabs() {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             const tab = btn.dataset.tab;
-            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
             const activePane = document.getElementById(`${tab}-tab`);
             if (activePane) activePane.classList.add('active');
             if (tab === 'map' && window.ymaps) setTimeout(() => window.ymaps.geolocation, 100);
-            if (tab === 'events') {
-                renderEvents();
-                renderCalendar(currentYear, currentMonth);
-            }
+            if (tab === 'events') { renderEvents(); renderCalendar(currentYear, currentMonth); }
             if (tab === 'passport') renderPassport();
             if (tab === 'educational') renderEducationalPosts();
         });
     });
-}
-
-// Функция для выбора музея из списка (используется в admin.js)
-async function selectMuseumFromList() {
-    const museumsList = await api('/api/museums');
-    let message = "Список музеев:\n";
-    museumsList.forEach(m => {
-        message += `${m.id} - ${m.name}\n`;
-    });
-    message += "\nВведите ID музея:";
-    const id = prompt(message);
-    if (id && !isNaN(parseInt(id))) {
-        return parseInt(id);
-    } else {
-        alert("Неверный ID");
-        return null;
-    }
 }
 
 // Инициализация
@@ -702,34 +717,23 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderPassport();
     renderTodayExhibit();
     initTabs();
-    
-    // Фильтр по темам на главной
+
+    // Поиск и фильтр
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.addEventListener('input', () => renderMain());
+    const cityFilter = document.getElementById('city-filter');
+    if (cityFilter) cityFilter.addEventListener('change', () => renderMain());
+
     const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
     if (filterCheckbox) filterCheckbox.addEventListener('change', () => renderEvents());
-    
-    // Загрузка тем для фильтра
-    const allExhibits = await api('/api/exhibits');
-    const subjects = [...new Set(allExhibits.map(e => e.subject).filter(Boolean))];
-    const filterSelect = document.getElementById('subject-filter');
-    if (filterSelect && subjects.length) {
-        subjects.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s;
-            opt.textContent = s;
-            filterSelect.appendChild(opt);
-        });
-        filterSelect.addEventListener('change', () => renderMain());
-    }
-    
+
     renderCalendar(currentYear, currentMonth);
-    
+
     if (typeof ymaps !== 'undefined') {
         ymaps.ready(() => { ymapsReady = true; initYandexMap(); });
     }
-    
+
     const urlParams = new URLSearchParams(window.location.search);
     const museumId = urlParams.get('museum');
-    if (museumId) {
-        setTimeout(() => showMuseumDetails(parseInt(museumId)), 500);
-    }
+    if (museumId) setTimeout(() => showMuseumDetails(parseInt(museumId)), 500);
 });
