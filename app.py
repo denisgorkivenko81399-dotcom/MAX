@@ -1,5 +1,5 @@
-import psycopg2
-import psycopg2.extras
+import psycopg
+from psycopg.rows import dict_row
 import json
 import os
 import random
@@ -11,8 +11,6 @@ app.secret_key = 'skfu_hackathon_2026'
 CORS(app)
 
 # ПОДКЛЮЧЕНИЕ К SUPABASE (PostgreSQL)
-# Если на Render задана переменная окружения DATABASE_URL — используется она.
-# Иначе — резервная строка подключения.
 DATABASE_URL = os.environ.get(
     'DATABASE_URL',
     'postgresql://postgres:bXM-8HX-ugU-DPb@db.sbhddpypsqkxxdooipbf.supabase.co:5432/postgres?sslmode=require'
@@ -22,7 +20,7 @@ ADMIN_PASSWORD = 'admin123'
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = psycopg2.connect(DATABASE_URL)
+        db = g._database = psycopg.connect(DATABASE_URL)
     return db
 
 @app.teardown_appcontext
@@ -34,13 +32,13 @@ def close_connection(exception):
 def query_db(query, args=(), one=False):
     """Выполняет SELECT и возвращает список словарей."""
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor(row_factory=dict_row)
     cur.execute(query, args)
     rv = cur.fetchall()
     cur.close()
     if one:
-        return dict(rv[0]) if rv else None
-    return [dict(row) for row in rv]
+        return rv[0] if rv else None
+    return rv
 
 def execute_db(query, args=(), returning=False):
     """Выполняет INSERT/UPDATE/DELETE. Если returning=True — возвращает первую строку."""
@@ -308,7 +306,7 @@ def get_educational_posts():
     ''')
     return jsonify(posts)
 
-# НОВОЕ: комментарии к постам
+# Комментарии к постам
 @app.route('/api/educational/posts/<int:post_id>/comments', methods=['GET'])
 def get_post_comments(post_id):
     comments = query_db(
