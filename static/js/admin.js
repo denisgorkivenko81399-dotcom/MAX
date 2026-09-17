@@ -541,25 +541,33 @@ async function submitForm() {
     if (data.museum_id) data.museum_id = parseInt(data.museum_id) || null;
     if (data.rating) data.rating = parseInt(data.rating);
 
+    // Определяем правильный URL эндпоинта (исправление для edu-post)
+    let entityUrl;
+    if (editType === 'edu-post') {
+        entityUrl = 'educational_posts';
+    } else {
+        entityUrl = editType + 's';
+    }
+
     let url, method;
-    let entity = editType;
     if (editId) {
         method = 'PUT';
-        url = `/api/admin/${entity}s`;
+        url = `/api/admin/${entityUrl}`;
         data.id = editId;
     } else {
         method = 'POST';
-        url = `/api/admin/${entity}s`;
+        url = `/api/admin/${entityUrl}`;
     }
+
     try {
         await adminApi(url, { method, body: JSON.stringify(data) });
         alert('Сохранено!');
         document.getElementById('adminModal').classList.add('hidden');
-        if (entity === 'museum') loadMuseumsList();
-        else if (entity === 'exhibit') loadExhibitsList();
-        else if (entity === 'event') loadEventsList();
-        else if (entity === 'photo') loadPhotosForMuseum(document.getElementById('museumSelectPhotos').value);
-        else if (entity === 'edu-post') loadEduPostsList();
+        if (editType === 'museum') loadMuseumsList();
+        else if (editType === 'exhibit') loadExhibitsList();
+        else if (editType === 'event') loadEventsList();
+        else if (editType === 'photo') loadPhotosForMuseum(document.getElementById('museumSelectPhotos').value);
+        else if (editType === 'edu-post') loadEduPostsList();
     } catch (e) {
         alert('Ошибка: ' + e.message);
     }
