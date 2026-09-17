@@ -11,6 +11,14 @@ let currentMonth = new Date().getMonth() + 1;
 let selectedDate = null;
 let favorites = [];
 
+// Скрытие прелоадера
+function hideLoader() {
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        setTimeout(() => loader.classList.add('hidden'), 300);
+    }
+}
+
 // Получение user_id
 function getUserId() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -86,18 +94,15 @@ async function toggleFavorite(exhibitId) {
     return !isFav;
 }
 
-// Получение фотографий с кэшем
+// Фото с кэшем
 async function getMuseumPhotos(museumId) {
     if (museumPhotosCache[museumId]) return museumPhotosCache[museumId];
     const photos = await api(`/api/museum_photos/${museumId}`);
     museumPhotosCache[museumId] = photos;
     return photos;
 }
-async function preloadAllPhotos() {
-    await Promise.all(museums.map(m => getMuseumPhotos(m.id)));
-}
 
-// Извлечение города из адреса
+// Город из адреса
 function extractCity(address) {
     if (!address) return '';
     const cities = ['Ставрополь', 'Пятигорск', 'Кисловодск', 'Будённовск', 'Буденновск',
@@ -108,7 +113,7 @@ function extractCity(address) {
     return '';
 }
 
-// Показать детальную карточку музея
+// Модалка музея
 async function showMuseumDetails(museumId) {
     const museum = museums.find(m => m.id === museumId);
     if (!museum) return;
@@ -180,8 +185,7 @@ async function showMuseumDetails(museumId) {
         </div>
         ${shareButtons}
         <hr>
-        ${reviewsHtml}
-    `;
+        ${reviewsHtml}`;
 
     modal.classList.remove('hidden');
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
@@ -262,7 +266,7 @@ function copyShareLink(museumId) {
     alert('Ссылка скопирована!');
 }
 
-// Показать экспонаты (с избранным)
+// Экспонаты
 async function showExhibits(museumId) {
     const exhibits = await api(`/api/exhibits/${museumId}`);
     const modal = document.getElementById('exhibitsModal');
@@ -293,13 +297,10 @@ async function showExhibits(museumId) {
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
 }
 
-// Рендер главной (с поиском и фильтром по городу)
+// Рендер главной с постепенной загрузкой
 async function renderMain() {
     const container = document.getElementById('museums-list');
     if (!container) return;
-
-    // Показываем индикатор загрузки
-    container.innerHTML = '<p style="text-align:center;padding:2rem;color:#7b4a2e;">⏳ Загрузка музеев...</p>';
 
     const searchQuery = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
     const cityFilter = document.getElementById('city-filter')?.value || '';
@@ -317,7 +318,6 @@ async function renderMain() {
         return;
     }
 
-    // Рендерим карточки без фото (быстро)
     container.innerHTML = '';
     for (const m of filtered) {
         const isSubscribed = subscriptions.some(s => s.id === m.id);
@@ -329,12 +329,13 @@ async function renderMain() {
             if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
             showMuseumDetails(m.id);
         });
-        // Обложку пока показываем из cover_photo_url, а если её нет — загрузим позже
         const coverPhoto = m.cover_photo_url || '';
         card.innerHTML = `
             <h3>${escapeHtml(m.name)}</h3>
             <div class="photo-placeholder" data-museum-id="${m.id}">
-                ${coverPhoto ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px;object-fit:cover;">` : '<div style="height:120px;background:#f0e3d4;display:flex;align-items:center;justify-content:center;">Загрузка фото...</div>'}
+                ${coverPhoto
+                    ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px;object-fit:cover;">`
+                    : '<div style="height:120px;background:#f0e3d4;display:flex;align-items:center;justify-content:center;color:#8a7a6a;font-size:0.85rem;">Загрузка фото...</div>'}
             </div>
             <p>${escapeHtml(m.description || '').substring(0, 100)}${(m.description || '').length > 100 ? '...' : ''}</p>
             <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(m.address)}</p>
@@ -347,7 +348,6 @@ async function renderMain() {
         container.appendChild(card);
     }
 
-    // Навешиваем обработчики кнопок
     document.querySelectorAll('.exhibits-btn').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); showExhibits(parseInt(btn.dataset.id)); });
     });
@@ -385,16 +385,16 @@ async function renderMain() {
         });
     });
 
-    // ФОТОГРАФИИ ДОГРУЖАЕМ В ФОНЕ — по одной, не блокируя интерфейс
+    // Догрузка фото в фоне
     filtered.forEach(m => {
-        if (m.cover_photo_url) return; // уже есть обложка
+        if (m.cover_photo_url) return;
         getMuseumPhotos(m.id).then(photos => {
             if (!photos.length) return;
             const placeholder = document.querySelector(`.photo-placeholder[data-museum-id="${m.id}"]`);
             if (placeholder) {
                 placeholder.innerHTML = `<img src="${photos[0]}" alt="фото музея" style="max-height:180px;object-fit:cover;">`;
             }
-        }).catch(() => { /* ничего не делаем при ошибке */ });
+        }).catch(() => {});
     });
 }
 
@@ -505,7 +505,7 @@ async function renderEvents() {
     `).join('');
 }
 
-// Образовательная лента (с комментариями и поделиться)
+// Лента постов
 async function renderEducationalPosts() {
     const container = document.getElementById('educational-posts');
     if (!container) return;
@@ -553,7 +553,6 @@ async function renderEducationalPosts() {
         }
         container.innerHTML = html;
 
-        // Обработчики для кнопок поделиться
         container.querySelectorAll('.share-vk').forEach(btn => btn.addEventListener('click', () => {
             const postId = btn.dataset.postId;
             const url = encodeURIComponent(window.location.origin + '/#post' + postId);
@@ -578,7 +577,6 @@ async function renderEducationalPosts() {
             alert('Ссылка скопирована!');
         }));
 
-        // Обработчики комментариев
         container.querySelectorAll('.comment-submit').forEach(btn => btn.addEventListener('click', async () => {
             const postId = btn.dataset.postId;
             const input = container.querySelector(`.comment-input[data-post-id="${postId}"]`);
@@ -726,21 +724,28 @@ function initTabs() {
 
 // Инициализация
 window.addEventListener('DOMContentLoaded', async () => {
-    // Общий try/catch — если что-то упадёт, страница всё равно отрендерится
     try {
         currentUserId = getUserId();
 
-        try { await loadMuseums(); } catch (e) { console.error('Museums load error:', e); }
-        try { await loadSubscriptions(); } catch (e) { console.error('Subs load error:', e); }
-        try { await loadVisits(); } catch (e) { console.error('Visits load error:', e); }
-        try { await loadFavorites(); } catch (e) { console.error('Favorites load error:', e); }
+        // Загружаем самое важное (музеи) — блокирующе
+        try { await loadMuseums(); } catch (e) { console.error('Museums error:', e); }
 
-        // Сначала рендерим главную с данными, которые уже есть
+        // Отрисовываем главную, чтобы пользователь увидел интерфейс
         await renderMain();
         initTabs();
 
-        // Затем — остальное в фоне, чтобы не блокировать загрузку
-        renderPassport().catch(e => console.error('Passport error:', e));
+        // Скрываем прелоадер
+        hideLoader();
+
+        // Остальное — в фоне, не блокируя интерфейс
+        loadSubscriptions().then(() => {
+            renderMain();
+            renderPassport();
+        }).catch(e => console.error('Subs error:', e));
+
+        loadVisits().catch(e => console.error('Visits error:', e));
+        loadFavorites().catch(e => console.error('Favorites error:', e));
+
         renderTodayExhibit().catch(e => console.error('Today error:', e));
 
         // Поиск и фильтр
@@ -752,6 +757,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
         if (filterCheckbox) filterCheckbox.addEventListener('change', () => renderEvents());
 
+        // Календарь и карта — тоже в фоне
         renderCalendar(currentYear, currentMonth).catch(e => console.error('Calendar error:', e));
 
         if (typeof ymaps !== 'undefined') {
@@ -762,7 +768,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         const museumId = urlParams.get('museum');
         if (museumId) setTimeout(() => showMuseumDetails(parseInt(museumId)), 500);
 
-    } catch (globalError) {
-        console.error('Critical init error:', globalError);
+    } catch (e) {
+        console.error('Init error:', e);
+        hideLoader(); // на всякий случай, чтобы пользователь не застрял
     }
 });
+
+// Если страница загружается слишком долго — принудительно скрываем лоадер через 15 сек
+setTimeout(hideLoader, 15000);
