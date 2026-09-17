@@ -124,7 +124,7 @@ async function showMuseumDetails(museumId) {
     container.innerHTML = `
         <div style="text-align:center;padding:3rem 1rem;">
             <div class="loader-spinner" style="margin:0 auto 1rem;"></div>
-            <p style="color:#7b4a2e;font-weight:500;">Рукописи не горят… Но лучше руками не трогать!</p>
+            <p style="color:#7b4a2e;font-weight:500;">Смотрительница отошла на минуту…</p>
         </div>`;
     modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
 
