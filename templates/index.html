@@ -13,6 +13,7 @@
         <h1><i class="fas fa-landmark"></i> Живая история: малые музеи Ставрополья</h1>
         <div class="user-info"><i class="fas fa-user"></i> <span id="userIdDisplay">гость</span></div>
     </div>
+
     <div class="tabs">
         <button class="tab-btn active" data-tab="main"><i class="fas fa-home"></i> Главная</button>
         <button class="tab-btn" data-tab="map"><i class="fas fa-map"></i> Карта</button>
@@ -20,20 +21,40 @@
         <button class="tab-btn" data-tab="educational"><i class="fas fa-graduation-cap"></i> Школьникам</button>
         <button class="tab-btn" data-tab="passport"><i class="fas fa-passport"></i> Мой паспорт</button>
     </div>
+
     <div class="tab-content">
-        <!-- Главная -->
+
+        <!-- ГЛАВНАЯ -->
         <div id="main-tab" class="tab-pane active">
-            <div id="today-exhibit" class="card" style="background: #faf3e8; border: 2px solid #7b4a2e; margin-bottom: 1rem;">
+            <div id="today-exhibit" class="card" style="background:#faf3e8; border:2px solid #7b4a2e; margin-bottom:1rem;">
                 <h3>🎓 Экспонат дня</h3>
                 <div id="today-exhibit-content"></div>
             </div>
+
+            <div class="filters-panel">
+                <input type="text" id="search-input" placeholder="🔍 Поиск музея по названию..." class="search-input">
+                <select id="city-filter" class="city-filter">
+                    <option value="">Все города</option>
+                    <option value="Ставрополь">Ставрополь</option>
+                    <option value="Пятигорск">Пятигорск</option>
+                    <option value="Кисловодск">Кисловодск</option>
+                    <option value="Будённовск">Будённовск</option>
+                    <option value="Благодарный">Благодарный</option>
+                    <option value="Новоселицкое">Новоселицкое</option>
+                    <option value="Гофицкое">Гофицкое</option>
+                    <option value="Невинномысск">Невинномысск</option>
+                </select>
+            </div>
+
             <div id="museums-list" class="card-list"></div>
         </div>
-        <!-- Карта -->
+
+        <!-- КАРТА -->
         <div id="map-tab" class="tab-pane">
             <div id="map" style="width:100%; height:60vh;"></div>
         </div>
-        <!-- События -->
+
+        <!-- СОБЫТИЯ -->
         <div id="events-tab" class="tab-pane">
             <div class="filter-bar">
                 <label><input type="checkbox" id="showOnlySubscribedEvents"> Только из подписанных музеев</label>
@@ -41,20 +62,23 @@
             <div id="calendar-grid"></div>
             <div id="events-list" class="card-list"></div>
         </div>
-        <!-- Школьникам -->
+
+        <!-- ШКОЛЬНИКАМ -->
         <div id="educational-tab" class="tab-pane">
             <h2>📚 Образовательная лента</h2>
             <div id="educational-posts" class="card-list"></div>
         </div>
-        <!-- Мой паспорт -->
+
+        <!-- МОЙ ПАСПОРТ -->
         <div id="passport-tab" class="tab-pane">
             <div id="passport-info"></div>
-            <div style="margin-top: 2rem; text-align: center;">
+            <div style="margin-top:2rem; text-align:center;">
                 <a href="/admin" target="_blank" class="admin-link-btn"><i class="fas fa-cogs"></i> Расширенная админ-панель</a>
             </div>
         </div>
     </div>
-    <!-- Модальные окна -->
+
+    <!-- Модальное окно для экспонатов -->
     <div id="exhibitsModal" class="modal hidden">
         <div class="modal-content">
             <span class="close">&times;</span>
@@ -62,12 +86,15 @@
             <div id="exhibitsListModal"></div>
         </div>
     </div>
+
+    <!-- Модальное окно для деталей музея -->
     <div id="museumModal" class="modal hidden">
-        <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-content" style="max-width:600px;">
             <span class="close">&times;</span>
             <div id="museumDetailContent"></div>
         </div>
     </div>
+
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
