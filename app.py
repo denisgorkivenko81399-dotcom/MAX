@@ -442,7 +442,7 @@ def admin_educational_posts():
             INSERT INTO educational_posts (title, content, photo_url, museum_id, author)
             VALUES (%s, %s, %s, %s, %s) RETURNING id
         ''', (d['title'], d['content'], d.get('photo_url'),
-              d.get('museum_id'), d.get('author', 'Сотрудник музея')), returning=True)
+              d.get('museum_id') or None, d.get('author', 'Сотрудник музея')), returning=True)
         return jsonify({'status': 'created', 'id': row[0] if row else None})
     elif request.method == 'PUT':
         d = request.json
@@ -450,7 +450,7 @@ def admin_educational_posts():
                       SET title=%s, content=%s, photo_url=%s, museum_id=%s, author=%s
                       WHERE id=%s''',
                    (d['title'], d['content'], d.get('photo_url'),
-                    d.get('museum_id'), d.get('author', 'Сотрудник музея'), d['id']))
+                    d.get('museum_id') or None, d.get('author', 'Сотрудник музея'), d['id']))
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
         execute_db('DELETE FROM educational_posts WHERE id = %s', (request.json.get('id'),))
