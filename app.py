@@ -12,7 +12,7 @@ CORS(app)
 
 DATABASE_URL = os.environ.get(
     'DATABASE_URL',
-    'postgresql://postgres:bXM-8HX-ugU-DPb@db.sbhddpypsqkxxdooipbf.supabase.co:5432/postgres?sslmode=require'
+    'postgresql://postgres.sbhddpypsqkxxdooipbf:bXM-8HX-ugU-DPb@aws-1-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require'
 )
 ADMIN_PASSWORD = 'admin123'
 
