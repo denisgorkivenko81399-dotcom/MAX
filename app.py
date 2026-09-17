@@ -1,574 +1,627 @@
-// Глобальная переменная для хранения ID редактируемого элемента
-let editId = null;
-let editType = null; // 'museum', 'exhibit', 'event', 'photo', 'edu-post'
-let currentAdminTab = 'museums';
+import sqlite3
+import json
+import os
+import random
+from flask import Flask, request, jsonify, render_template, g
+from flask_cors import CORS
 
-// Инициализация
-document.addEventListener('DOMContentLoaded', () => {
-    initAdminTabs();
-    loadMuseumsList();
-});
+app = Flask(__name__)
+app.secret_key = 'skfu_hackathon_2026'
+CORS(app)
 
-// Переключение вкладок
-function initAdminTabs() {
-    document.querySelectorAll('.admin-container .tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.admin-container .tab-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const tab = btn.dataset.tab;
-            currentAdminTab = tab;
-            document.querySelectorAll('.admin-section').forEach(s => s.classList.add('hidden'));
-            const sectionMap = {
-                'museums': 'museums-section',
-                'exhibits': 'exhibits-section',
-                'events': 'events-section',
-                'photos': 'photos-section',
-                'edu-posts': 'edu-posts-section'
-            };
-            const sectionId = sectionMap[tab];
-            if (sectionId) {
-                document.getElementById(sectionId).classList.remove('hidden');
-            }
-            if (tab === 'museums') loadMuseumsList();
-            else if (tab === 'exhibits') loadExhibitsList();
-            else if (tab === 'events') loadEventsList();
-            else if (tab === 'photos') loadMuseumsForPhotos();
-            else if (tab === 'edu-posts') loadEduPostsList();
-        });
-    });
-}
+DATABASE = 'museum.db'
+ADMIN_PASSWORD = 'admin123'
 
-// Вспомогательная функция для API с паролем
-async function adminApi(url, options = {}) {
-    const pwd = localStorage.getItem('admin_password');
-    if (!pwd) {
-        const entered = prompt('Введите пароль администратора:');
-        if (entered) localStorage.setItem('admin_password', entered);
-        else throw new Error('Пароль обязателен');
-    }
-    const headers = {
-        'Content-Type': 'application/json',
-        'X-Admin-Password': localStorage.getItem('admin_password')
-    };
-    const res = await fetch(url, { ...options, headers });
-    if (res.status === 403) {
-        localStorage.removeItem('admin_password');
-        alert('Неверный пароль. Попробуйте снова.');
-        throw new Error('Unauthorized');
-    }
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-}
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
+    return db
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, m => {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
-// ------------------- УПРАВЛЕНИЕ МУЗЕЯМИ -------------------
-async function loadMuseumsList() {
-    const container = document.getElementById('museums-list-admin');
-    if (!container) return;
-    try {
-        const museums = await adminApi('/api/admin/museums');
-        let html = `<table class="admin-table">
-            <thead><tr><th>ID</th><th>Название</th><th>Адрес</th><th>Пушкинская</th><th>Действия</th></tr></thead><tbody>`;
-        museums.forEach(m => {
-            html += `<tr>
-                <td>${m.id}</td>
-                <td>${escapeHtml(m.name)}</td>
-                <td>${escapeHtml(m.address || '')}</td>
-                <td>${m.pushkin_card === 'да' ? '✅' : '❌'}</td>
-                <td class="admin-actions">
-                    <button class="edit" data-id="${m.id}" data-type="museum"><i class="fas fa-edit"></i></button>
-                    <button class="delete" data-id="${m.id}" data-type="museum"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-        container.querySelectorAll('.edit').forEach(btn => {
-            btn.addEventListener('click', () => editMuseum(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('.delete').forEach(btn => {
-            btn.addEventListener('click', () => deleteMuseum(parseInt(btn.dataset.id)));
-        });
-    } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки музеев: ' + e.message + '</p>';
-    }
-}
+def migrate_db():
+    with app.app_context():
+        db = get_db()
+        cursor = db.cursor()
 
-async function editMuseum(id) {
-    editType = 'museum';
-    const museums = await adminApi('/api/admin/museums');
-    const museum = museums.find(m => m.id === id);
-    if (!museum) return;
-    const fields = [
-        { name: 'name', label: 'Название', required: true },
-        { name: 'address', label: 'Адрес', required: true },
-        { name: 'lat', label: 'Широта', type: 'number', required: true },
-        { name: 'lng', label: 'Долгота', type: 'number', required: true },
-        { name: 'description', label: 'Описание', type: 'textarea' },
-        { name: 'contacts', label: 'Контакты' },
-        { name: 'website', label: 'Сайт' },
-        { name: 'cover_photo_url', label: 'Ссылка на главное фото' },
-        { name: 'pushkin_card', label: 'Пушкинская карта', type: 'checkbox' }
-    ];
-    showForm('Редактировать музей', fields, museum);
-}
+        # --- Основные таблицы (создаём, если нет) ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS museums (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                address TEXT,
+                lat REAL,
+                lng REAL,
+                description TEXT,
+                contacts TEXT,
+                website TEXT,
+                cover_photo_url TEXT,
+                pushkin_card TEXT DEFAULT 'нет'
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS museum_photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                museum_id INTEGER NOT NULL,
+                photo_url TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS exhibits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                museum_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                photo_url TEXT,
+                subject TEXT,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                museum_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                date TEXT,
+                time TEXT,
+                description TEXT,
+                photo_url TEXT,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                user_id TEXT NOT NULL,
+                museum_id INTEGER NOT NULL,
+                PRIMARY KEY (user_id, museum_id),
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_visits (
+                user_id TEXT NOT NULL,
+                museum_id INTEGER NOT NULL,
+                visited BOOLEAN DEFAULT 0,
+                PRIMARY KEY (user_id, museum_id),
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                event_id INTEGER NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+                UNIQUE(user_id, event_id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                museum_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+                text TEXT,
+                user_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
+            )
+        ''')
 
-async function deleteMuseum(id) {
-    if (!confirm('Удалить музей и все связанные данные?')) return;
-    try {
-        await adminApi('/api/admin/museums', { method: 'DELETE', body: JSON.stringify({ id }) });
-        alert('Удалено');
-        loadMuseumsList();
-    } catch (e) {
-        alert('Ошибка удаления: ' + e.message);
-    }
-}
+        # --- НОВЫЕ ТАБЛИЦЫ ДЛЯ ОБРАЗОВАТЕЛЬНОГО МОДУЛЯ ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_favorites (
+                user_id TEXT NOT NULL,
+                exhibit_id INTEGER NOT NULL,
+                saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, exhibit_id),
+                FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS educational_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                photo_url TEXT,
+                museum_id INTEGER,
+                author TEXT DEFAULT 'Сотрудник музея',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE SET NULL
+            )
+        ''')
 
-document.getElementById('addMuseumBtn')?.addEventListener('click', () => {
-    editType = 'museum';
-    editId = null;
-    const fields = [
-        { name: 'name', label: 'Название', required: true },
-        { name: 'address', label: 'Адрес', required: true },
-        { name: 'lat', label: 'Широта', type: 'number', required: true },
-        { name: 'lng', label: 'Долгота', type: 'number', required: true },
-        { name: 'description', label: 'Описание', type: 'textarea' },
-        { name: 'contacts', label: 'Контакты' },
-        { name: 'website', label: 'Сайт' },
-        { name: 'cover_photo_url', label: 'Ссылка на главное фото' },
-        { name: 'pushkin_card', label: 'Пушкинская карта', type: 'checkbox' }
-    ];
-    showForm('Добавить музей', fields);
-});
+        # --- Добавляем поля, если их нет ---
+        cursor.execute("PRAGMA table_info(events)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'time' not in columns:
+            cursor.execute('ALTER TABLE events ADD COLUMN time TEXT')
+        cursor.execute("PRAGMA table_info(exhibits)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'subject' not in columns:
+            cursor.execute('ALTER TABLE exhibits ADD COLUMN subject TEXT')
 
-// ------------------- УПРАВЛЕНИЕ ЭКСПОНАТАМИ -------------------
-async function loadExhibitsList() {
-    const container = document.getElementById('exhibits-list-admin');
-    if (!container) return;
-    try {
-        const exhibits = await adminApi('/api/admin/exhibits');
-        const museums = await adminApi('/api/admin/museums');
-        const museumMap = {};
-        museums.forEach(m => museumMap[m.id] = m.name);
-        let html = `<table class="admin-table">
-            <thead><tr><th>ID</th><th>Название</th><th>Музей</th><th>Тема</th><th>Действия</th></tr></thead><tbody>`;
-        exhibits.forEach(ex => {
-            html += `<tr>
-                <td>${ex.id}</td>
-                <td>${escapeHtml(ex.name)}</td>
-                <td>${escapeHtml(museumMap[ex.museum_id] || 'Неизвестно')}</td>
-                <td>${escapeHtml(ex.subject || '')}</td>
-                <td class="admin-actions">
-                    <button class="edit" data-id="${ex.id}" data-type="exhibit"><i class="fas fa-edit"></i></button>
-                    <button class="delete" data-id="${ex.id}" data-type="exhibit"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-        container.querySelectorAll('.edit').forEach(btn => {
-            btn.addEventListener('click', () => editExhibit(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('.delete').forEach(btn => {
-            btn.addEventListener('click', () => deleteExhibit(parseInt(btn.dataset.id)));
-        });
-    } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки экспонатов: ' + e.message + '</p>';
-    }
-}
+        db.commit()
 
-async function editExhibit(id) {
-    editType = 'exhibit';
-    const exhibits = await adminApi('/api/admin/exhibits');
-    const ex = exhibits.find(e => e.id === id);
-    if (!ex) return;
-    const museums = await adminApi('/api/admin/museums');
-    const options = museums.map(m => ({ value: m.id, label: m.name }));
-    const fields = [
-        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-        { name: 'name', label: 'Название', required: true },
-        { name: 'description', label: 'Описание', type: 'textarea' },
-        { name: 'photo_url', label: 'Фото URL' },
-        { name: 'subject', label: 'Учебная тема' }
-    ];
-    showForm('Редактировать экспонат', fields, ex);
-}
+        # --- Загрузка начальных данных, если музеев нет ---
+        cursor.execute("SELECT COUNT(*) FROM museums")
+        if cursor.fetchone()[0] == 0:
+            load_seed_data(db)
+        db.commit()
 
-async function deleteExhibit(id) {
-    if (!confirm('Удалить экспонат?')) return;
-    try {
-        await adminApi('/api/admin/exhibits', { method: 'DELETE', body: JSON.stringify({ id }) });
-        alert('Удалено');
-        loadExhibitsList();
-    } catch (e) {
-        alert('Ошибка удаления: ' + e.message);
-    }
-}
+def load_seed_data(db):
+    with open('seed_data.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    cursor = db.cursor()
+    for museum in data['museums']:
+        cursor.execute('''
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
+              museum['description'], museum.get('contacts'), museum.get('website'),
+              museum.get('cover_photo'), museum.get('pushkin_card', 'нет')))
+        museum_id = cursor.lastrowid
+        for photo_url in museum.get('photos', []):
+            cursor.execute('INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (?, ?, ?)',
+                           (museum_id, photo_url, 0))
+        for ex in museum.get('exhibits', []):
+            cursor.execute('''
+                INSERT INTO exhibits (museum_id, name, description, photo_url, subject)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (museum_id, ex['name'], ex['description'], ex.get('photo_url', ''), ex.get('subject', '')))
+        for ev in museum.get('events', []):
+            cursor.execute('''
+                INSERT INTO events (museum_id, title, date, time, description, photo_url)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (museum_id, ev['title'], ev['date'], ev.get('time', ''), ev.get('description', ''), ev.get('photo_url', '')))
+    db.commit()
 
-document.getElementById('addExhibitBtn')?.addEventListener('click', async () => {
-    editType = 'exhibit';
-    editId = null;
-    const museums = await adminApi('/api/admin/museums');
-    const options = museums.map(m => ({ value: m.id, label: m.name }));
-    const fields = [
-        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-        { name: 'name', label: 'Название', required: true },
-        { name: 'description', label: 'Описание', type: 'textarea' },
-        { name: 'photo_url', label: 'Фото URL' },
-        { name: 'subject', label: 'Учебная тема' }
-    ];
-    showForm('Добавить экспонат', fields);
-});
+# ------------------- API для посетителей -------------------
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-// ------------------- УПРАВЛЕНИЕ СОБЫТИЯМИ -------------------
-async function loadEventsList() {
-    const container = document.getElementById('events-list-admin');
-    if (!container) return;
-    try {
-        const events = await adminApi('/api/admin/events');
-        const museums = await adminApi('/api/admin/museums');
-        const museumMap = {};
-        museums.forEach(m => museumMap[m.id] = m.name);
-        let html = `<table class="admin-table">
-            <thead><tr><th>ID</th><th>Название</th><th>Музей</th><th>Дата</th><th>Действия</th></tr></thead><tbody>`;
-        events.forEach(ev => {
-            html += `<tr>
-                <td>${ev.id}</td>
-                <td>${escapeHtml(ev.title)}</td>
-                <td>${escapeHtml(museumMap[ev.museum_id] || 'Неизвестно')}</td>
-                <td>${escapeHtml(ev.date || '')}</td>
-                <td class="admin-actions">
-                    <button class="edit" data-id="${ev.id}" data-type="event"><i class="fas fa-edit"></i></button>
-                    <button class="delete" data-id="${ev.id}" data-type="event"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-        container.querySelectorAll('.edit').forEach(btn => {
-            btn.addEventListener('click', () => editEvent(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('.delete').forEach(btn => {
-            btn.addEventListener('click', () => deleteEvent(parseInt(btn.dataset.id)));
-        });
-    } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки событий: ' + e.message + '</p>';
-    }
-}
+@app.route('/admin')
+def admin_panel():
+    return render_template('admin.html')
 
-async function editEvent(id) {
-    editType = 'event';
-    const events = await adminApi('/api/admin/events');
-    const ev = events.find(e => e.id === id);
-    if (!ev) return;
-    const museums = await adminApi('/api/admin/museums');
-    const options = museums.map(m => ({ value: m.id, label: m.name }));
-    const fields = [
-        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-        { name: 'title', label: 'Название', required: true },
-        { name: 'date', label: 'Дата (YYYY-MM-DD)', required: true },
-        { name: 'time', label: 'Время (HH:MM)' },
-        { name: 'description', label: 'Описание', type: 'textarea' },
-        { name: 'photo_url', label: 'Фото URL' }
-    ];
-    showForm('Редактировать событие', fields, ev);
-}
+@app.route('/api/museums')
+def get_museums():
+    db = get_db()
+    museums = db.execute('SELECT * FROM museums').fetchall()
+    return jsonify([dict(row) for row in museums])
 
-async function deleteEvent(id) {
-    if (!confirm('Удалить событие?')) return;
-    try {
-        await adminApi('/api/admin/events', { method: 'DELETE', body: JSON.stringify({ id }) });
-        alert('Удалено');
-        loadEventsList();
-    } catch (e) {
-        alert('Ошибка удаления: ' + e.message);
-    }
-}
+@app.route('/api/museum_photos/<int:museum_id>')
+def get_museum_photos(museum_id):
+    db = get_db()
+    photos = db.execute('SELECT photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
+    return jsonify([p['photo_url'] for p in photos])
 
-document.getElementById('addEventBtn')?.addEventListener('click', async () => {
-    editType = 'event';
-    editId = null;
-    const museums = await adminApi('/api/admin/museums');
-    const options = museums.map(m => ({ value: m.id, label: m.name }));
-    const fields = [
-        { name: 'museum_id', label: 'Музей', type: 'select', options, required: true },
-        { name: 'title', label: 'Название', required: true },
-        { name: 'date', label: 'Дата (YYYY-MM-DD)', required: true },
-        { name: 'time', label: 'Время (HH:MM)' },
-        { name: 'description', label: 'Описание', type: 'textarea' },
-        { name: 'photo_url', label: 'Фото URL' }
-    ];
-    showForm('Добавить событие', fields);
-});
+@app.route('/api/exhibits/<int:museum_id>')
+def get_exhibits(museum_id):
+    db = get_db()
+    exhibits = db.execute('SELECT * FROM exhibits WHERE museum_id = ?', (museum_id,)).fetchall()
+    return jsonify([dict(row) for row in exhibits])
 
-// ------------------- УПРАВЛЕНИЕ ФОТОГРАФИЯМИ -------------------
-async function loadMuseumsForPhotos() {
-    const select = document.getElementById('museumSelectPhotos');
-    if (!select) return;
-    try {
-        const museums = await adminApi('/api/admin/museums');
-        select.innerHTML = '<option value="">Выберите музей</option>';
-        museums.forEach(m => {
-            const option = document.createElement('option');
-            option.value = m.id;
-            option.textContent = m.name;
-            select.appendChild(option);
-        });
-        select.onchange = () => {
-            const id = select.value;
-            if (id) loadPhotosForMuseum(id);
-            else document.getElementById('photos-list-admin').innerHTML = '';
-        };
-    } catch (e) {
-        alert('Ошибка загрузки музеев для фото');
-    }
-}
+@app.route('/api/exhibits')
+def get_all_exhibits():
+    db = get_db()
+    exhibits = db.execute('SELECT * FROM exhibits').fetchall()
+    return jsonify([dict(row) for row in exhibits])
 
-async function loadPhotosForMuseum(museumId) {
-    if (!museumId) return;
-    const container = document.getElementById('photos-list-admin');
-    try {
-        const photos = await adminApi(`/api/admin/museum_photos/${museumId}`);
-        let html = `<table class="admin-table">
-            <thead><tr><th>ID</th><th>Фото URL</th><th>Действия</th></tr></thead><tbody>`;
-        photos.forEach(p => {
-            html += `<tr>
-                <td>${p.id}</td>
-                <td><a href="${p.photo_url}" target="_blank">${escapeHtml(p.photo_url)}</a></td>
-                <td class="admin-actions">
-                    <button class="delete-photo" data-id="${p.id}" data-museum="${museumId}"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-        container.querySelectorAll('.delete-photo').forEach(btn => {
-            btn.addEventListener('click', () => deletePhoto(parseInt(btn.dataset.id), parseInt(btn.dataset.museum)));
-        });
-    } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки фото: ' + e.message + '</p>';
-    }
-}
+@app.route('/api/events')
+def get_events():
+    user_id = request.args.get('user_id')
+    db = get_db()
+    if user_id:
+        subs = db.execute('SELECT museum_id FROM subscriptions WHERE user_id = ?', (user_id,)).fetchall()
+        if subs:
+            museum_ids = [row['museum_id'] for row in subs]
+            placeholders = ','.join('?' for _ in museum_ids)
+            events = db.execute(f'''
+                SELECT events.*, museums.name as museum_name
+                FROM events JOIN museums ON events.museum_id = museums.id
+                WHERE events.museum_id IN ({placeholders})
+                ORDER BY events.date DESC, events.time
+            ''', museum_ids).fetchall()
+        else:
+            events = []
+    else:
+        events = db.execute('''
+            SELECT events.*, museums.name as museum_name
+            FROM events JOIN museums ON events.museum_id = museums.id
+            ORDER BY events.date DESC, events.time
+        ''').fetchall()
+    return jsonify([dict(row) for row in events])
 
-async function deletePhoto(photoId, museumId) {
-    if (!confirm('Удалить фото?')) return;
-    try {
-        await adminApi(`/api/admin/museum_photos/${museumId}`, {
-            method: 'DELETE',
-            body: JSON.stringify({ photo_id: photoId })
-        });
-        alert('Фото удалено');
-        loadPhotosForMuseum(museumId);
-    } catch (e) {
-        alert('Ошибка удаления: ' + e.message);
-    }
-}
+@app.route('/api/events/month')
+def get_events_month():
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    if not year or not month:
+        return jsonify({'error': 'Missing year or month'}), 400
+    db = get_db()
+    events = db.execute('''
+        SELECT id, title, date, time, museum_id,
+               (SELECT name FROM museums WHERE id = events.museum_id) as museum_name
+        FROM events
+        WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        ORDER BY date, time
+    ''', (str(year), f'{month:02d}')).fetchall()
+    return jsonify([dict(row) for row in events])
 
-document.getElementById('addPhotoBtn')?.addEventListener('click', () => {
-    const museumId = document.getElementById('museumSelectPhotos').value;
-    if (!museumId) {
-        alert('Сначала выберите музей');
-        return;
-    }
-    const url = prompt('Введите URL нового фото:');
-    if (url) {
-        adminApi(`/api/admin/museum_photos/${museumId}`, {
-            method: 'POST',
-            body: JSON.stringify({ photo_url: url })
-        }).then(() => {
-            alert('Фото добавлено');
-            loadPhotosForMuseum(museumId);
-        }).catch(e => alert('Ошибка: ' + e.message));
-    }
-});
+@app.route('/api/events/date')
+def get_events_by_date():
+    date = request.args.get('date')
+    if not date:
+        return jsonify({'error': 'Missing date'}), 400
+    db = get_db()
+    events = db.execute('''
+        SELECT events.*, museums.name as museum_name
+        FROM events JOIN museums ON events.museum_id = museums.id
+        WHERE date = ?
+        ORDER BY time
+    ''', (date,)).fetchall()
+    return jsonify([dict(row) for row in events])
 
-// ------------------- УПРАВЛЕНИЕ ОБРАЗОВАТЕЛЬНЫМИ ПОСТАМИ -------------------
-async function loadEduPostsList() {
-    const container = document.getElementById('edu-posts-list-admin');
-    if (!container) return;
-    try {
-        const posts = await adminApi('/api/admin/educational_posts');
-        let html = `<table class="admin-table">
-            <thead><tr><th>ID</th><th>Название</th><th>Автор</th><th>Дата</th><th>Действия</th></tr></thead><tbody>`;
-        posts.forEach(p => {
-            html += `<tr>
-                <td>${p.id}</td>
-                <td>${escapeHtml(p.title)}</td>
-                <td>${escapeHtml(p.author || '')}</td>
-                <td>${p.created_at.slice(0,10)}</td>
-                <td class="admin-actions">
-                    <button class="edit" data-id="${p.id}" data-type="edu-post"><i class="fas fa-edit"></i></button>
-                    <button class="delete" data-id="${p.id}" data-type="edu-post"><i class="fas fa-trash"></i></button>
-                </td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-        container.querySelectorAll('.edit').forEach(btn => {
-            btn.addEventListener('click', () => editEduPost(parseInt(btn.dataset.id)));
-        });
-        container.querySelectorAll('.delete').forEach(btn => {
-            btn.addEventListener('click', () => deleteEduPost(parseInt(btn.dataset.id)));
-        });
-    } catch (e) {
-        container.innerHTML = '<p>Ошибка загрузки постов: ' + e.message + '</p>';
-    }
-}
+@app.route('/api/subscribe', methods=['POST'])
+def subscribe():
+    data = request.json
+    user_id = data.get('user_id')
+    museum_id = data.get('museum_id')
+    if not user_id or not museum_id:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    db.execute('INSERT OR REPLACE INTO subscriptions (user_id, museum_id) VALUES (?, ?)', (user_id, museum_id))
+    db.commit()
+    return jsonify({'status': 'subscribed'})
 
-async function editEduPost(id) {
-    editType = 'edu-post';
-    const posts = await adminApi('/api/admin/educational_posts');
-    const post = posts.find(p => p.id === id);
-    if (!post) return;
-    const museums = await adminApi('/api/admin/museums');
-    const options = museums.map(m => ({ value: m.id, label: m.name }));
-    const fields = [
-        { name: 'title', label: 'Заголовок', required: true },
-        { name: 'content', label: 'Содержание', type: 'textarea', required: true },
-        { name: 'photo_url', label: 'Ссылка на фото' },
-        { name: 'museum_id', label: 'Музей (необязательно)', type: 'select', options: [{ value: '', label: 'Не привязан' }, ...options] },
-        { name: 'author', label: 'Автор', required: true }
-    ];
-    showForm('Редактировать пост', fields, post);
-}
+@app.route('/api/unsubscribe', methods=['POST'])
+def unsubscribe():
+    data = request.json
+    user_id = data.get('user_id')
+    museum_id = data.get('museum_id')
+    db = get_db()
+    db.execute('DELETE FROM subscriptions WHERE user_id = ? AND museum_id = ?', (user_id, museum_id))
+    db.commit()
+    return jsonify({'status': 'unsubscribed'})
 
-async function deleteEduPost(id) {
-    if (!confirm('Удалить пост?')) return;
-    try {
-        await adminApi('/api/admin/educational_posts', { method: 'DELETE', body: JSON.stringify({ id }) });
-        alert('Удалено');
-        loadEduPostsList();
-    } catch (e) {
-        alert('Ошибка удаления: ' + e.message);
-    }
-}
+@app.route('/api/visits', methods=['GET', 'POST'])
+def visits():
+    user_id = request.args.get('user_id') if request.method == 'GET' else request.json.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'No user_id'}), 400
+    db = get_db()
+    if request.method == 'GET':
+        visits = db.execute('SELECT museum_id, visited FROM user_visits WHERE user_id = ?', (user_id,)).fetchall()
+        return jsonify([dict(row) for row in visits])
+    else:
+        data = request.json
+        museum_id = data.get('museum_id')
+        visited = data.get('visited', 1)
+        db.execute('INSERT OR REPLACE INTO user_visits (user_id, museum_id, visited) VALUES (?, ?, ?)',
+                   (user_id, museum_id, visited))
+        db.commit()
+        return jsonify({'status': 'ok'})
 
-document.getElementById('addEduPostBtn')?.addEventListener('click', async () => {
-    editType = 'edu-post';
-    editId = null;
-    const museums = await adminApi('/api/admin/museums');
-    const options = museums.map(m => ({ value: m.id, label: m.name }));
-    const fields = [
-        { name: 'title', label: 'Заголовок', required: true },
-        { name: 'content', label: 'Содержание', type: 'textarea', required: true },
-        { name: 'photo_url', label: 'Ссылка на фото' },
-        { name: 'museum_id', label: 'Музей (необязательно)', type: 'select', options: [{ value: '', label: 'Не привязан' }, ...options] },
-        { name: 'author', label: 'Автор', required: true }
-    ];
-    showForm('Добавить пост', fields);
-});
+@app.route('/api/user/subscriptions')
+def get_subscriptions():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+    db = get_db()
+    subs = db.execute('''
+        SELECT museums.id, museums.name FROM subscriptions
+        JOIN museums ON subscriptions.museum_id = museums.id
+        WHERE subscriptions.user_id = ?
+    ''', (user_id,)).fetchall()
+    return jsonify([dict(row) for row in subs])
 
-// ------------------- ОБЩАЯ ФУНКЦИЯ ДЛЯ ФОРМ -------------------
-function showForm(title, fields, data = null) {
-    const modal = document.getElementById('adminModal');
-    const form = document.getElementById('adminForm');
-    const titleEl = document.getElementById('adminModalTitle');
-    const container = document.getElementById('formFields');
-    container.innerHTML = '';
-    editId = data ? data.id : null;
-    titleEl.textContent = title;
-    fields.forEach(f => {
-        const div = document.createElement('div');
-        div.className = 'form-group';
-        const label = document.createElement('label');
-        label.textContent = f.label + (f.required ? ' *' : '');
-        label.htmlFor = `field_${f.name}`;
-        div.appendChild(label);
-        let input;
-        if (f.type === 'select') {
-            input = document.createElement('select');
-            input.id = `field_${f.name}`;
-            f.options.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.label;
-                if (data && data[f.name] == opt.value) option.selected = true;
-                input.appendChild(option);
-            });
-        } else if (f.type === 'textarea') {
-            input = document.createElement('textarea');
-            input.id = `field_${f.name}`;
-            input.rows = 4;
-            if (data && data[f.name]) input.value = data[f.name];
-        } else if (f.type === 'checkbox') {
-            input = document.createElement('input');
-            input.type = 'checkbox';
-            input.id = `field_${f.name}`;
-            if (data && data[f.name] === 'да') input.checked = true;
-        } else {
-            input = document.createElement('input');
-            input.type = f.type || 'text';
-            input.id = `field_${f.name}`;
-            if (data && data[f.name] !== undefined) input.value = data[f.name];
-            else if (f.default) input.value = f.default;
-        }
-        input.name = f.name;
-        if (f.required) input.required = true;
-        div.appendChild(input);
-        container.appendChild(div);
-    });
-    modal.classList.remove('hidden');
-    modal.querySelector('.close').onclick = () => modal.classList.add('hidden');
-    document.getElementById('cancelFormBtn').onclick = () => modal.classList.add('hidden');
-    form.onsubmit = async (e) => {
-        e.preventDefault();
-        await submitForm();
-    };
-}
+# ------------------- ИЗБРАННОЕ (FAVORITES) -------------------
+@app.route('/api/favorites/add', methods=['POST'])
+def add_favorite():
+    data = request.json
+    user_id = data.get('user_id')
+    exhibit_id = data.get('exhibit_id')
+    if not user_id or not exhibit_id:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    db.execute('INSERT OR IGNORE INTO user_favorites (user_id, exhibit_id) VALUES (?, ?)', (user_id, exhibit_id))
+    db.commit()
+    return jsonify({'status': 'added'})
 
-async function submitForm() {
-    const form = document.getElementById('adminForm');
-    const formData = new FormData(form);
-    const data = {};
-    for (let [key, value] of formData.entries()) {
-        if (key === 'pushkin_card' || key === 'visited') {
-            data[key] = value === 'on' ? 'да' : 'нет';
-        } else {
-            data[key] = value;
-        }
-    }
-    if (data.lat) data.lat = parseFloat(data.lat);
-    if (data.lng) data.lng = parseFloat(data.lng);
-    if (data.museum_id) data.museum_id = parseInt(data.museum_id) || null;
-    if (data.rating) data.rating = parseInt(data.rating);
+@app.route('/api/favorites/remove', methods=['POST'])
+def remove_favorite():
+    data = request.json
+    user_id = data.get('user_id')
+    exhibit_id = data.get('exhibit_id')
+    db = get_db()
+    db.execute('DELETE FROM user_favorites WHERE user_id = ? AND exhibit_id = ?', (user_id, exhibit_id))
+    db.commit()
+    return jsonify({'status': 'removed'})
 
-    // Определяем правильный URL эндпоинта (исправление для edu-post)
-    let entityUrl;
-    if (editType === 'edu-post') {
-        entityUrl = 'educational_posts';
-    } else {
-        entityUrl = editType + 's';
-    }
+@app.route('/api/favorites')
+def get_favorites():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+    db = get_db()
+    favorites = db.execute('SELECT exhibit_id FROM user_favorites WHERE user_id = ?', (user_id,)).fetchall()
+    return jsonify([row['exhibit_id'] for row in favorites])
 
-    let url, method;
-    if (editId) {
-        method = 'PUT';
-        url = `/api/admin/${entityUrl}`;
-        data.id = editId;
-    } else {
-        method = 'POST';
-        url = `/api/admin/${entityUrl}`;
-    }
+# ------------------- ОБРАЗОВАТЕЛЬНЫЕ ПОСТЫ (лента) -------------------
+@app.route('/api/educational/posts')
+def get_educational_posts():
+    db = get_db()
+    posts = db.execute('''
+        SELECT educational_posts.*, museums.name as museum_name
+        FROM educational_posts
+        LEFT JOIN museums ON educational_posts.museum_id = museums.id
+        ORDER BY educational_posts.created_at DESC
+    ''').fetchall()
+    return jsonify([dict(row) for row in posts])
 
-    try {
-        await adminApi(url, { method, body: JSON.stringify(data) });
-        alert('Сохранено!');
-        document.getElementById('adminModal').classList.add('hidden');
-        if (editType === 'museum') loadMuseumsList();
-        else if (editType === 'exhibit') loadExhibitsList();
-        else if (editType === 'event') loadEventsList();
-        else if (editType === 'photo') loadPhotosForMuseum(document.getElementById('museumSelectPhotos').value);
-        else if (editType === 'edu-post') loadEduPostsList();
-    } catch (e) {
-        alert('Ошибка: ' + e.message);
-    }
-}
+# ------------------- ЭКСПОНАТ ДНЯ (ФАКТ) -------------------
+@app.route('/api/exhibit/today')
+def get_today_exhibit():
+    db = get_db()
+    exhibits = db.execute('SELECT * FROM exhibits WHERE description IS NOT NULL AND description != ""').fetchall()
+    if not exhibits:
+        exhibits = db.execute('SELECT * FROM exhibits').fetchall()
+        if not exhibits:
+            return jsonify({})
+    exhibit = random.choice(exhibits)
+    museum = db.execute('SELECT name FROM museums WHERE id = ?', (exhibit['museum_id'],)).fetchone()
+    result = dict(exhibit)
+    result['museum_name'] = museum['name'] if museum else ''
+    if len(result['description']) > 200:
+        result['description'] = result['description'][:200] + '...'
+    return jsonify(result)
+
+# ------------------- АДМИН-ПАНЕЛЬ (API) -------------------
+def admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        pwd = request.headers.get('X-Admin-Password')
+        if pwd != ADMIN_PASSWORD:
+            return jsonify({'error': 'Unauthorized'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/admin/museums', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_museums():
+    db = get_db()
+    if request.method == 'GET':
+        museums = db.execute('SELECT * FROM museums').fetchall()
+        return jsonify([dict(row) for row in museums])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE museums
+            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?, pushkin_card=?
+            WHERE id=?
+        ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет'), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        museum_id = request.json.get('id')
+        db.execute('DELETE FROM museums WHERE id = ?', (museum_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+@app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
+@admin_required
+def admin_museum_photos(museum_id):
+    db = get_db()
+    if request.method == 'GET':
+        photos = db.execute('SELECT id, photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
+        return jsonify([dict(row) for row in photos])
+    elif request.method == 'POST':
+        data = request.json
+        photo_url = data.get('photo_url')
+        if not photo_url:
+            return jsonify({'error': 'No photo_url'}), 400
+        db.execute('INSERT INTO museum_photos (museum_id, photo_url) VALUES (?, ?)', (museum_id, photo_url))
+        db.commit()
+        return jsonify({'status': 'added'})
+    elif request.method == 'DELETE':
+        photo_id = request.json.get('photo_id')
+        db.execute('DELETE FROM museum_photos WHERE id = ? AND museum_id = ?', (photo_id, museum_id))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+@app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_exhibits():
+    db = get_db()
+    if request.method == 'GET':
+        exhibits = db.execute('SELECT * FROM exhibits').fetchall()
+        return jsonify([dict(row) for row in exhibits])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO exhibits (museum_id, name, description, photo_url, subject)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data.get('subject', '')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE exhibits SET museum_id=?, name=?, description=?, photo_url=?, subject=?
+            WHERE id=?
+        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data.get('subject', ''), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        exhibit_id = request.json.get('id')
+        db.execute('DELETE FROM exhibits WHERE id = ?', (exhibit_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+@app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_events():
+    db = get_db()
+    if request.method == 'GET':
+        events = db.execute('SELECT * FROM events').fetchall()
+        return jsonify([dict(row) for row in events])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO events (museum_id, title, date, time, description, photo_url)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (data['museum_id'], data['title'], data['date'], data.get('time'), data.get('description'), data.get('photo_url')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE events SET museum_id=?, title=?, date=?, time=?, description=?, photo_url=?
+            WHERE id=?
+        ''', (data['museum_id'], data['title'], data['date'], data.get('time'), data.get('description'), data.get('photo_url'), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        event_id = request.json.get('id')
+        db.execute('DELETE FROM events WHERE id = ?', (event_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+# ------------------- АДМИН: ОБРАЗОВАТЕЛЬНЫЕ ПОСТЫ -------------------
+@app.route('/api/admin/educational_posts', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@admin_required
+def admin_educational_posts():
+    db = get_db()
+    if request.method == 'GET':
+        posts = db.execute('SELECT * FROM educational_posts ORDER BY created_at DESC').fetchall()
+        return jsonify([dict(row) for row in posts])
+    elif request.method == 'POST':
+        data = request.json
+        cursor = db.execute('''
+            INSERT INTO educational_posts (title, content, photo_url, museum_id, author)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (data['title'], data['content'], data.get('photo_url'), data.get('museum_id'), data.get('author', 'Сотрудник музея')))
+        db.commit()
+        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+    elif request.method == 'PUT':
+        data = request.json
+        db.execute('''
+            UPDATE educational_posts
+            SET title=?, content=?, photo_url=?, museum_id=?, author=?
+            WHERE id=?
+        ''', (data['title'], data['content'], data.get('photo_url'), data.get('museum_id'), data.get('author', 'Сотрудник музея'), data['id']))
+        db.commit()
+        return jsonify({'status': 'updated'})
+    elif request.method == 'DELETE':
+        post_id = request.json.get('id')
+        db.execute('DELETE FROM educational_posts WHERE id = ?', (post_id,))
+        db.commit()
+        return jsonify({'status': 'deleted'})
+
+@app.route('/api/user/events/add', methods=['POST'])
+def add_user_event():
+    data = request.json
+    user_id = data.get('user_id')
+    event_id = data.get('event_id')
+    if not user_id or not event_id:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    db.execute('INSERT OR IGNORE INTO user_events (user_id, event_id) VALUES (?, ?)', (user_id, event_id))
+    db.commit()
+    return jsonify({'status': 'added'})
+
+@app.route('/api/user/events')
+def get_user_events():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+    db = get_db()
+    events = db.execute('''
+        SELECT events.*, museums.name as museum_name
+        FROM user_events
+        JOIN events ON user_events.event_id = events.id
+        JOIN museums ON events.museum_id = museums.id
+        WHERE user_events.user_id = ?
+        ORDER BY events.date, events.time
+    ''', (user_id,)).fetchall()
+    return jsonify([dict(row) for row in events])
+
+@app.route('/api/museum/<int:museum_id>/reviews')
+def get_museum_reviews(museum_id):
+    db = get_db()
+    reviews = db.execute('''
+        SELECT id, user_id, rating, text, user_name, created_at
+        FROM reviews WHERE museum_id = ?
+        ORDER BY created_at DESC LIMIT 10
+    ''', (museum_id,)).fetchall()
+    return jsonify([dict(row) for row in reviews])
+
+@app.route('/api/museum/<int:museum_id>/rating')
+def get_museum_rating(museum_id):
+    db = get_db()
+    avg = db.execute('SELECT AVG(rating) as avg FROM reviews WHERE museum_id = ?', (museum_id,)).fetchone()
+    return jsonify({'average': avg['avg'] or 0})
+
+@app.route('/api/reviews/add', methods=['POST'])
+def add_review():
+    data = request.json
+    museum_id = data.get('museum_id')
+    user_id = data.get('user_id')
+    rating = data.get('rating')
+    text = data.get('text')
+    user_name = data.get('user_name')
+    if not museum_id or not user_id or not rating:
+        return jsonify({'error': 'Missing data'}), 400
+    db = get_db()
+    existing = db.execute('SELECT id FROM reviews WHERE museum_id = ? AND user_id = ?', (museum_id, user_id)).fetchone()
+    if existing:
+        return jsonify({'error': 'Already reviewed'}), 400
+    db.execute('''
+        INSERT INTO reviews (museum_id, user_id, rating, text, user_name)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (museum_id, user_id, rating, text, user_name))
+    db.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.json
+    if 'message' in data and 'chat' in data['message']:
+        chat_id = data['message']['chat']['id']
+        reply_text = "Добро пожаловать! Наше приложение для малых музеев Ставрополья доступно по ссылке:\nhttps://max-5-qu3i.onrender.com\n\nВы можете найти музеи на карте, подписаться на события и отметить посещения."
+        return jsonify({
+            'method': 'sendMessage',
+            'chat_id': chat_id,
+            'text': reply_text
+        })
+    return jsonify({})
+
+if __name__ == '__main__':
+    if not os.path.exists(DATABASE):
+        migrate_db()
+    else:
+        with app.app_context():
+            migrate_db()
+    app.run(debug=True, host='0.0.0.0', port=5000)
