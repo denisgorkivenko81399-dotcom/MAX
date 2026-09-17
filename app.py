@@ -1,4 +1,5 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import json
 import os
 import random
@@ -9,14 +10,19 @@ app = Flask(__name__)
 app.secret_key = 'skfu_hackathon_2026'
 CORS(app)
 
-DATABASE = 'museum.db'
+# ПОДКЛЮЧЕНИЕ К SUPABASE (PostgreSQL)
+# Если на Render задана переменная окружения DATABASE_URL — используется она.
+# Иначе — резервная строка подключения.
+DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    'postgresql://postgres:bXM-8HX-ugU-DPb@db.sbhddpypsqkxxdooipbf.supabase.co:5432/postgres?sslmode=require'
+)
 ADMIN_PASSWORD = 'admin123'
 
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
+        db = g._database = psycopg2.connect(DATABASE_URL)
     return db
 
 @app.teardown_appcontext
@@ -25,167 +31,92 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
+def query_db(query, args=(), one=False):
+    """Выполняет SELECT и возвращает список словарей."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(query, args)
+    rv = cur.fetchall()
+    cur.close()
+    if one:
+        return dict(rv[0]) if rv else None
+    return [dict(row) for row in rv]
+
+def execute_db(query, args=(), returning=False):
+    """Выполняет INSERT/UPDATE/DELETE. Если returning=True — возвращает первую строку."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(query, args)
+    conn.commit()
+    result = None
+    if returning:
+        try:
+            result = cur.fetchone()
+        except Exception:
+            result = None
+    cur.close()
+    return result
+
 def migrate_db():
-    with app.app_context():
-        db = get_db()
-        cursor = db.cursor()
+    """Создаёт недостающие таблицы и загружает начальные данные, если база пуста."""
+    conn = get_db()
+    cur = conn.cursor()
 
-        # --- Основные таблицы (создаём, если нет) ---
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS museums (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                address TEXT,
-                lat REAL,
-                lng REAL,
-                description TEXT,
-                contacts TEXT,
-                website TEXT,
-                cover_photo_url TEXT,
-                pushkin_card TEXT DEFAULT 'нет'
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS museum_photos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                museum_id INTEGER NOT NULL,
-                photo_url TEXT NOT NULL,
-                sort_order INTEGER DEFAULT 0,
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS exhibits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                museum_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT,
-                photo_url TEXT,
-                subject TEXT,
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                museum_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                date TEXT,
-                time TEXT,
-                description TEXT,
-                photo_url TEXT,
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                user_id TEXT NOT NULL,
-                museum_id INTEGER NOT NULL,
-                PRIMARY KEY (user_id, museum_id),
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_visits (
-                user_id TEXT NOT NULL,
-                museum_id INTEGER NOT NULL,
-                visited BOOLEAN DEFAULT 0,
-                PRIMARY KEY (user_id, museum_id),
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                event_id INTEGER NOT NULL,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
-                UNIQUE(user_id, event_id)
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                museum_id INTEGER NOT NULL,
-                user_id TEXT NOT NULL,
-                rating INTEGER CHECK (rating BETWEEN 1 AND 5),
-                text TEXT,
-                user_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE CASCADE
-            )
-        ''')
+    # Таблица комментариев к постам (новая функция)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS post_comments (
+            id SERIAL PRIMARY KEY,
+            post_id INTEGER NOT NULL REFERENCES educational_posts(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL,
+            user_name TEXT,
+            text TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    cur.close()
 
-        # --- НОВЫЕ ТАБЛИЦЫ ДЛЯ ОБРАЗОВАТЕЛЬНОГО МОДУЛЯ ---
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_favorites (
-                user_id TEXT NOT NULL,
-                exhibit_id INTEGER NOT NULL,
-                saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, exhibit_id),
-                FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS educational_posts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                photo_url TEXT,
-                museum_id INTEGER,
-                author TEXT DEFAULT 'Сотрудник музея',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (museum_id) REFERENCES museums(id) ON DELETE SET NULL
-            )
-        ''')
+    # Загрузка seed, если музеев нет
+    row = query_db("SELECT COUNT(*) as cnt FROM museums", one=True)
+    if row and row['cnt'] == 0:
+        load_seed_data(conn)
 
-        # --- Добавляем поля, если их нет ---
-        cursor.execute("PRAGMA table_info(events)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'time' not in columns:
-            cursor.execute('ALTER TABLE events ADD COLUMN time TEXT')
-        cursor.execute("PRAGMA table_info(exhibits)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'subject' not in columns:
-            cursor.execute('ALTER TABLE exhibits ADD COLUMN subject TEXT')
-
-        db.commit()
-
-        # --- Загрузка начальных данных, если музеев нет ---
-        cursor.execute("SELECT COUNT(*) FROM museums")
-        if cursor.fetchone()[0] == 0:
-            load_seed_data(db)
-        db.commit()
-
-def load_seed_data(db):
+def load_seed_data(conn):
+    """Загружает данные из seed_data.json в PostgreSQL."""
     with open('seed_data.json', 'r', encoding='utf-8') as f:
         data = json.load(f)
-    cursor = db.cursor()
+    cur = conn.cursor()
     for museum in data['museums']:
-        cursor.execute('''
+        cur.execute('''
             INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         ''', (museum['name'], museum['address'], museum['lat'], museum['lng'],
               museum['description'], museum.get('contacts'), museum.get('website'),
               museum.get('cover_photo'), museum.get('pushkin_card', 'нет')))
-        museum_id = cursor.lastrowid
+        museum_id = cur.fetchone()[0]
+
         for photo_url in museum.get('photos', []):
-            cursor.execute('INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (?, ?, ?)',
-                           (museum_id, photo_url, 0))
+            cur.execute(
+                'INSERT INTO museum_photos (museum_id, photo_url, sort_order) VALUES (%s, %s, %s)',
+                (museum_id, photo_url, 0)
+            )
         for ex in museum.get('exhibits', []):
-            cursor.execute('''
+            cur.execute('''
                 INSERT INTO exhibits (museum_id, name, description, photo_url, subject)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             ''', (museum_id, ex['name'], ex['description'], ex.get('photo_url', ''), ex.get('subject', '')))
         for ev in museum.get('events', []):
-            cursor.execute('''
+            cur.execute('''
                 INSERT INTO events (museum_id, title, date, time, description, photo_url)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', (museum_id, ev['title'], ev['date'], ev.get('time', ''), ev.get('description', ''), ev.get('photo_url', '')))
-    db.commit()
+    conn.commit()
+    cur.close()
 
-# ------------------- API для посетителей -------------------
+# ============================================================
+# API ДЛЯ ПОСЕТИТЕЛЕЙ
+# ============================================================
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -196,52 +127,52 @@ def admin_panel():
 
 @app.route('/api/museums')
 def get_museums():
-    db = get_db()
-    museums = db.execute('SELECT * FROM museums').fetchall()
-    return jsonify([dict(row) for row in museums])
+    museums = query_db('SELECT * FROM museums ORDER BY id')
+    return jsonify(museums)
 
 @app.route('/api/museum_photos/<int:museum_id>')
 def get_museum_photos(museum_id):
-    db = get_db()
-    photos = db.execute('SELECT photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
+    photos = query_db(
+        'SELECT photo_url FROM museum_photos WHERE museum_id = %s ORDER BY sort_order',
+        (museum_id,)
+    )
     return jsonify([p['photo_url'] for p in photos])
 
 @app.route('/api/exhibits/<int:museum_id>')
 def get_exhibits(museum_id):
-    db = get_db()
-    exhibits = db.execute('SELECT * FROM exhibits WHERE museum_id = ?', (museum_id,)).fetchall()
-    return jsonify([dict(row) for row in exhibits])
+    exhibits = query_db('SELECT * FROM exhibits WHERE museum_id = %s', (museum_id,))
+    return jsonify(exhibits)
 
 @app.route('/api/exhibits')
 def get_all_exhibits():
-    db = get_db()
-    exhibits = db.execute('SELECT * FROM exhibits').fetchall()
-    return jsonify([dict(row) for row in exhibits])
+    exhibits = query_db('SELECT * FROM exhibits')
+    return jsonify(exhibits)
 
 @app.route('/api/events')
 def get_events():
     user_id = request.args.get('user_id')
-    db = get_db()
     if user_id:
-        subs = db.execute('SELECT museum_id FROM subscriptions WHERE user_id = ?', (user_id,)).fetchall()
+        subs = query_db('SELECT museum_id FROM subscriptions WHERE user_id = %s', (user_id,))
         if subs:
-            museum_ids = [row['museum_id'] for row in subs]
-            placeholders = ','.join('?' for _ in museum_ids)
-            events = db.execute(f'''
-                SELECT events.*, museums.name as museum_name
-                FROM events JOIN museums ON events.museum_id = museums.id
+            museum_ids = [s['museum_id'] for s in subs]
+            placeholders = ','.join(['%s'] * len(museum_ids))
+            events = query_db(f'''
+                SELECT events.*, museums.name AS museum_name
+                FROM events
+                JOIN museums ON events.museum_id = museums.id
                 WHERE events.museum_id IN ({placeholders})
                 ORDER BY events.date DESC, events.time
-            ''', museum_ids).fetchall()
+            ''', tuple(museum_ids))
         else:
             events = []
     else:
-        events = db.execute('''
-            SELECT events.*, museums.name as museum_name
-            FROM events JOIN museums ON events.museum_id = museums.id
+        events = query_db('''
+            SELECT events.*, museums.name AS museum_name
+            FROM events
+            JOIN museums ON events.museum_id = museums.id
             ORDER BY events.date DESC, events.time
-        ''').fetchall()
-    return jsonify([dict(row) for row in events])
+        ''')
+    return jsonify(events)
 
 @app.route('/api/events/month')
 def get_events_month():
@@ -249,29 +180,29 @@ def get_events_month():
     month = request.args.get('month', type=int)
     if not year or not month:
         return jsonify({'error': 'Missing year or month'}), 400
-    db = get_db()
-    events = db.execute('''
+    pattern = f'{year}-{month:02d}%'
+    events = query_db('''
         SELECT id, title, date, time, museum_id,
-               (SELECT name FROM museums WHERE id = events.museum_id) as museum_name
+               (SELECT name FROM museums WHERE id = events.museum_id) AS museum_name
         FROM events
-        WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        WHERE date LIKE %s
         ORDER BY date, time
-    ''', (str(year), f'{month:02d}')).fetchall()
-    return jsonify([dict(row) for row in events])
+    ''', (pattern,))
+    return jsonify(events)
 
 @app.route('/api/events/date')
 def get_events_by_date():
     date = request.args.get('date')
     if not date:
         return jsonify({'error': 'Missing date'}), 400
-    db = get_db()
-    events = db.execute('''
-        SELECT events.*, museums.name as museum_name
-        FROM events JOIN museums ON events.museum_id = museums.id
-        WHERE date = ?
+    events = query_db('''
+        SELECT events.*, museums.name AS museum_name
+        FROM events
+        JOIN museums ON events.museum_id = museums.id
+        WHERE date = %s
         ORDER BY time
-    ''', (date,)).fetchall()
-    return jsonify([dict(row) for row in events])
+    ''', (date,))
+    return jsonify(events)
 
 @app.route('/api/subscribe', methods=['POST'])
 def subscribe():
@@ -280,9 +211,12 @@ def subscribe():
     museum_id = data.get('museum_id')
     if not user_id or not museum_id:
         return jsonify({'error': 'Missing data'}), 400
-    db = get_db()
-    db.execute('INSERT OR REPLACE INTO subscriptions (user_id, museum_id) VALUES (?, ?)', (user_id, museum_id))
-    db.commit()
+    execute_db(
+        '''INSERT INTO subscriptions (user_id, museum_id)
+           VALUES (%s, %s)
+           ON CONFLICT (user_id, museum_id) DO NOTHING''',
+        (user_id, museum_id)
+    )
     return jsonify({'status': 'subscribed'})
 
 @app.route('/api/unsubscribe', methods=['POST'])
@@ -290,27 +224,30 @@ def unsubscribe():
     data = request.json
     user_id = data.get('user_id')
     museum_id = data.get('museum_id')
-    db = get_db()
-    db.execute('DELETE FROM subscriptions WHERE user_id = ? AND museum_id = ?', (user_id, museum_id))
-    db.commit()
+    execute_db('DELETE FROM subscriptions WHERE user_id = %s AND museum_id = %s', (user_id, museum_id))
     return jsonify({'status': 'unsubscribed'})
 
 @app.route('/api/visits', methods=['GET', 'POST'])
 def visits():
-    user_id = request.args.get('user_id') if request.method == 'GET' else request.json.get('user_id')
-    if not user_id:
-        return jsonify({'error': 'No user_id'}), 400
-    db = get_db()
     if request.method == 'GET':
-        visits = db.execute('SELECT museum_id, visited FROM user_visits WHERE user_id = ?', (user_id,)).fetchall()
-        return jsonify([dict(row) for row in visits])
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'No user_id'}), 400
+        visits = query_db('SELECT museum_id, visited FROM user_visits WHERE user_id = %s', (user_id,))
+        return jsonify(visits)
     else:
         data = request.json
+        user_id = data.get('user_id')
         museum_id = data.get('museum_id')
-        visited = data.get('visited', 1)
-        db.execute('INSERT OR REPLACE INTO user_visits (user_id, museum_id, visited) VALUES (?, ?, ?)',
-                   (user_id, museum_id, visited))
-        db.commit()
+        visited = bool(data.get('visited', 1))
+        if not user_id:
+            return jsonify({'error': 'No user_id'}), 400
+        execute_db(
+            '''INSERT INTO user_visits (user_id, museum_id, visited)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (user_id, museum_id) DO UPDATE SET visited = EXCLUDED.visited''',
+            (user_id, museum_id, visited)
+        )
         return jsonify({'status': 'ok'})
 
 @app.route('/api/user/subscriptions')
@@ -318,15 +255,15 @@ def get_subscriptions():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify([])
-    db = get_db()
-    subs = db.execute('''
-        SELECT museums.id, museums.name FROM subscriptions
+    subs = query_db('''
+        SELECT museums.id, museums.name
+        FROM subscriptions
         JOIN museums ON subscriptions.museum_id = museums.id
-        WHERE subscriptions.user_id = ?
-    ''', (user_id,)).fetchall()
-    return jsonify([dict(row) for row in subs])
+        WHERE subscriptions.user_id = %s
+    ''', (user_id,))
+    return jsonify(subs)
 
-# ------------------- ИЗБРАННОЕ (FAVORITES) -------------------
+# ------------------- ИЗБРАННОЕ -------------------
 @app.route('/api/favorites/add', methods=['POST'])
 def add_favorite():
     data = request.json
@@ -334,9 +271,12 @@ def add_favorite():
     exhibit_id = data.get('exhibit_id')
     if not user_id or not exhibit_id:
         return jsonify({'error': 'Missing data'}), 400
-    db = get_db()
-    db.execute('INSERT OR IGNORE INTO user_favorites (user_id, exhibit_id) VALUES (?, ?)', (user_id, exhibit_id))
-    db.commit()
+    execute_db(
+        '''INSERT INTO user_favorites (user_id, exhibit_id)
+           VALUES (%s, %s)
+           ON CONFLICT (user_id, exhibit_id) DO NOTHING''',
+        (user_id, exhibit_id)
+    )
     return jsonify({'status': 'added'})
 
 @app.route('/api/favorites/remove', methods=['POST'])
@@ -344,9 +284,7 @@ def remove_favorite():
     data = request.json
     user_id = data.get('user_id')
     exhibit_id = data.get('exhibit_id')
-    db = get_db()
-    db.execute('DELETE FROM user_favorites WHERE user_id = ? AND exhibit_id = ?', (user_id, exhibit_id))
-    db.commit()
+    execute_db('DELETE FROM user_favorites WHERE user_id = %s AND exhibit_id = %s', (user_id, exhibit_id))
     return jsonify({'status': 'removed'})
 
 @app.route('/api/favorites')
@@ -354,40 +292,70 @@ def get_favorites():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify([])
-    db = get_db()
-    favorites = db.execute('SELECT exhibit_id FROM user_favorites WHERE user_id = ?', (user_id,)).fetchall()
-    return jsonify([row['exhibit_id'] for row in favorites])
+    favorites = query_db('SELECT exhibit_id FROM user_favorites WHERE user_id = %s', (user_id,))
+    return jsonify([f['exhibit_id'] for f in favorites])
 
-# ------------------- ОБРАЗОВАТЕЛЬНЫЕ ПОСТЫ (лента) -------------------
+# ------------------- ОБРАЗОВАТЕЛЬНЫЕ ПОСТЫ -------------------
 @app.route('/api/educational/posts')
 def get_educational_posts():
-    db = get_db()
-    posts = db.execute('''
-        SELECT educational_posts.*, museums.name as museum_name
+    posts = query_db('''
+        SELECT educational_posts.*,
+               museums.name AS museum_name,
+               (SELECT COUNT(*) FROM post_comments WHERE post_id = educational_posts.id) AS comments_count
         FROM educational_posts
         LEFT JOIN museums ON educational_posts.museum_id = museums.id
         ORDER BY educational_posts.created_at DESC
-    ''').fetchall()
-    return jsonify([dict(row) for row in posts])
+    ''')
+    return jsonify(posts)
 
-# ------------------- ЭКСПОНАТ ДНЯ (ФАКТ) -------------------
+# НОВОЕ: комментарии к постам
+@app.route('/api/educational/posts/<int:post_id>/comments', methods=['GET'])
+def get_post_comments(post_id):
+    comments = query_db(
+        'SELECT * FROM post_comments WHERE post_id = %s ORDER BY created_at ASC',
+        (post_id,)
+    )
+    return jsonify(comments)
+
+@app.route('/api/educational/posts/<int:post_id>/comments', methods=['POST'])
+def add_post_comment(post_id):
+    data = request.json
+    user_id = data.get('user_id')
+    text = (data.get('text') or '').strip()
+    user_name = (data.get('user_name') or '').strip() or 'Аноним'
+    if not user_id or not text:
+        return jsonify({'error': 'Missing data'}), 400
+    row = execute_db(
+        '''INSERT INTO post_comments (post_id, user_id, user_name, text)
+           VALUES (%s, %s, %s, %s) RETURNING id''',
+        (post_id, user_id, user_name, text),
+        returning=True
+    )
+    return jsonify({'status': 'created', 'id': row[0] if row else None})
+
+# ------------------- ЭКСПОНАТ ДНЯ -------------------
 @app.route('/api/exhibit/today')
 def get_today_exhibit():
-    db = get_db()
-    exhibits = db.execute('SELECT * FROM exhibits WHERE description IS NOT NULL AND description != ""').fetchall()
+    exhibits = query_db(
+        'SELECT * FROM exhibits WHERE description IS NOT NULL AND description != %s',
+        ('',)
+    )
     if not exhibits:
-        exhibits = db.execute('SELECT * FROM exhibits').fetchall()
+        exhibits = query_db('SELECT * FROM exhibits')
         if not exhibits:
             return jsonify({})
     exhibit = random.choice(exhibits)
-    museum = db.execute('SELECT name FROM museums WHERE id = ?', (exhibit['museum_id'],)).fetchone()
+    museum = query_db('SELECT name FROM museums WHERE id = %s', (exhibit['museum_id'],), one=True)
     result = dict(exhibit)
     result['museum_name'] = museum['name'] if museum else ''
-    if len(result['description']) > 200:
+    if result.get('description') and len(result['description']) > 200:
         result['description'] = result['description'][:200] + '...'
     return jsonify(result)
 
-# ------------------- АДМИН-ПАНЕЛЬ (API) -------------------
+# ============================================================
+# АДМИН-ПАНЕЛЬ
+# ============================================================
+
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -401,145 +369,134 @@ def admin_required(f):
 @app.route('/api/admin/museums', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_museums():
-    db = get_db()
     if request.method == 'GET':
-        museums = db.execute('SELECT * FROM museums').fetchall()
-        return jsonify([dict(row) for row in museums])
+        return jsonify(query_db('SELECT * FROM museums ORDER BY id'))
     elif request.method == 'POST':
         data = request.json
-        cursor = db.execute('''
+        row = execute_db('''
             INSERT INTO museums (name, address, lat, lng, description, contacts, website, cover_photo_url, pushkin_card)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет')),
+            returning=True)
+        return jsonify({'status': 'created', 'id': row[0] if row else None})
     elif request.method == 'PUT':
         data = request.json
-        db.execute('''
+        execute_db('''
             UPDATE museums
-            SET name=?, address=?, lat=?, lng=?, description=?, contacts=?, website=?, cover_photo_url=?, pushkin_card=?
-            WHERE id=?
+            SET name=%s, address=%s, lat=%s, lng=%s, description=%s,
+                contacts=%s, website=%s, cover_photo_url=%s, pushkin_card=%s
+            WHERE id=%s
         ''', (data['name'], data['address'], data['lat'], data['lng'], data['description'],
-              data.get('contacts'), data.get('website'), data.get('cover_photo'), data.get('pushkin_card', 'нет'), data['id']))
-        db.commit()
+              data.get('contacts'), data.get('website'), data.get('cover_photo'),
+              data.get('pushkin_card', 'нет'), data['id']))
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
         museum_id = request.json.get('id')
-        db.execute('DELETE FROM museums WHERE id = ?', (museum_id,))
-        db.commit()
+        execute_db('DELETE FROM museums WHERE id = %s', (museum_id,))
         return jsonify({'status': 'deleted'})
 
 @app.route('/api/admin/museum_photos/<int:museum_id>', methods=['GET', 'POST', 'DELETE'])
 @admin_required
 def admin_museum_photos(museum_id):
-    db = get_db()
     if request.method == 'GET':
-        photos = db.execute('SELECT id, photo_url FROM museum_photos WHERE museum_id = ? ORDER BY sort_order', (museum_id,)).fetchall()
-        return jsonify([dict(row) for row in photos])
+        photos = query_db(
+            'SELECT id, photo_url FROM museum_photos WHERE museum_id = %s ORDER BY sort_order',
+            (museum_id,)
+        )
+        return jsonify(photos)
     elif request.method == 'POST':
         data = request.json
         photo_url = data.get('photo_url')
         if not photo_url:
             return jsonify({'error': 'No photo_url'}), 400
-        db.execute('INSERT INTO museum_photos (museum_id, photo_url) VALUES (?, ?)', (museum_id, photo_url))
-        db.commit()
+        execute_db('INSERT INTO museum_photos (museum_id, photo_url) VALUES (%s, %s)', (museum_id, photo_url))
         return jsonify({'status': 'added'})
     elif request.method == 'DELETE':
         photo_id = request.json.get('photo_id')
-        db.execute('DELETE FROM museum_photos WHERE id = ? AND museum_id = ?', (photo_id, museum_id))
-        db.commit()
+        execute_db('DELETE FROM museum_photos WHERE id = %s AND museum_id = %s', (photo_id, museum_id))
         return jsonify({'status': 'deleted'})
 
 @app.route('/api/admin/exhibits', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_exhibits():
-    db = get_db()
     if request.method == 'GET':
-        exhibits = db.execute('SELECT * FROM exhibits').fetchall()
-        return jsonify([dict(row) for row in exhibits])
+        return jsonify(query_db('SELECT * FROM exhibits ORDER BY id'))
     elif request.method == 'POST':
         data = request.json
-        cursor = db.execute('''
+        row = execute_db('''
             INSERT INTO exhibits (museum_id, name, description, photo_url, subject)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data.get('subject', '')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        ''', (data['museum_id'], data['name'], data['description'],
+              data.get('photo_url'), data.get('subject', '')), returning=True)
+        return jsonify({'status': 'created', 'id': row[0] if row else None})
     elif request.method == 'PUT':
         data = request.json
-        db.execute('''
-            UPDATE exhibits SET museum_id=?, name=?, description=?, photo_url=?, subject=?
-            WHERE id=?
-        ''', (data['museum_id'], data['name'], data['description'], data.get('photo_url'), data.get('subject', ''), data['id']))
-        db.commit()
+        execute_db('''
+            UPDATE exhibits SET museum_id=%s, name=%s, description=%s, photo_url=%s, subject=%s
+            WHERE id=%s
+        ''', (data['museum_id'], data['name'], data['description'],
+              data.get('photo_url'), data.get('subject', ''), data['id']))
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
         exhibit_id = request.json.get('id')
-        db.execute('DELETE FROM exhibits WHERE id = ?', (exhibit_id,))
-        db.commit()
+        execute_db('DELETE FROM exhibits WHERE id = %s', (exhibit_id,))
         return jsonify({'status': 'deleted'})
 
 @app.route('/api/admin/events', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_events():
-    db = get_db()
     if request.method == 'GET':
-        events = db.execute('SELECT * FROM events').fetchall()
-        return jsonify([dict(row) for row in events])
+        return jsonify(query_db('SELECT * FROM events ORDER BY id'))
     elif request.method == 'POST':
         data = request.json
-        cursor = db.execute('''
+        row = execute_db('''
             INSERT INTO events (museum_id, title, date, time, description, photo_url)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (data['museum_id'], data['title'], data['date'], data.get('time'), data.get('description'), data.get('photo_url')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        ''', (data['museum_id'], data['title'], data['date'], data.get('time'),
+              data.get('description'), data.get('photo_url')), returning=True)
+        return jsonify({'status': 'created', 'id': row[0] if row else None})
     elif request.method == 'PUT':
         data = request.json
-        db.execute('''
-            UPDATE events SET museum_id=?, title=?, date=?, time=?, description=?, photo_url=?
-            WHERE id=?
-        ''', (data['museum_id'], data['title'], data['date'], data.get('time'), data.get('description'), data.get('photo_url'), data['id']))
-        db.commit()
+        execute_db('''
+            UPDATE events SET museum_id=%s, title=%s, date=%s, time=%s, description=%s, photo_url=%s
+            WHERE id=%s
+        ''', (data['museum_id'], data['title'], data['date'], data.get('time'),
+              data.get('description'), data.get('photo_url'), data['id']))
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
         event_id = request.json.get('id')
-        db.execute('DELETE FROM events WHERE id = ?', (event_id,))
-        db.commit()
+        execute_db('DELETE FROM events WHERE id = %s', (event_id,))
         return jsonify({'status': 'deleted'})
 
-# ------------------- АДМИН: ОБРАЗОВАТЕЛЬНЫЕ ПОСТЫ -------------------
 @app.route('/api/admin/educational_posts', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @admin_required
 def admin_educational_posts():
-    db = get_db()
     if request.method == 'GET':
-        posts = db.execute('SELECT * FROM educational_posts ORDER BY created_at DESC').fetchall()
-        return jsonify([dict(row) for row in posts])
+        return jsonify(query_db('SELECT * FROM educational_posts ORDER BY created_at DESC'))
     elif request.method == 'POST':
         data = request.json
-        cursor = db.execute('''
+        row = execute_db('''
             INSERT INTO educational_posts (title, content, photo_url, museum_id, author)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (data['title'], data['content'], data.get('photo_url'), data.get('museum_id'), data.get('author', 'Сотрудник музея')))
-        db.commit()
-        return jsonify({'status': 'created', 'id': cursor.lastrowid})
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        ''', (data['title'], data['content'], data.get('photo_url'),
+              data.get('museum_id'), data.get('author', 'Сотрудник музея')), returning=True)
+        return jsonify({'status': 'created', 'id': row[0] if row else None})
     elif request.method == 'PUT':
         data = request.json
-        db.execute('''
+        execute_db('''
             UPDATE educational_posts
-            SET title=?, content=?, photo_url=?, museum_id=?, author=?
-            WHERE id=?
-        ''', (data['title'], data['content'], data.get('photo_url'), data.get('museum_id'), data.get('author', 'Сотрудник музея'), data['id']))
-        db.commit()
+            SET title=%s, content=%s, photo_url=%s, museum_id=%s, author=%s
+            WHERE id=%s
+        ''', (data['title'], data['content'], data.get('photo_url'),
+              data.get('museum_id'), data.get('author', 'Сотрудник музея'), data['id']))
         return jsonify({'status': 'updated'})
     elif request.method == 'DELETE':
         post_id = request.json.get('id')
-        db.execute('DELETE FROM educational_posts WHERE id = ?', (post_id,))
-        db.commit()
+        execute_db('DELETE FROM educational_posts WHERE id = %s', (post_id,))
         return jsonify({'status': 'deleted'})
 
+# ------------------- СОБЫТИЯ ПОЛЬЗОВАТЕЛЯ -------------------
 @app.route('/api/user/events/add', methods=['POST'])
 def add_user_event():
     data = request.json
@@ -547,9 +504,12 @@ def add_user_event():
     event_id = data.get('event_id')
     if not user_id or not event_id:
         return jsonify({'error': 'Missing data'}), 400
-    db = get_db()
-    db.execute('INSERT OR IGNORE INTO user_events (user_id, event_id) VALUES (?, ?)', (user_id, event_id))
-    db.commit()
+    execute_db(
+        '''INSERT INTO user_events (user_id, event_id)
+           VALUES (%s, %s)
+           ON CONFLICT (user_id, event_id) DO NOTHING''',
+        (user_id, event_id)
+    )
     return jsonify({'status': 'added'})
 
 @app.route('/api/user/events')
@@ -557,32 +517,32 @@ def get_user_events():
     user_id = request.args.get('user_id')
     if not user_id:
         return jsonify([])
-    db = get_db()
-    events = db.execute('''
-        SELECT events.*, museums.name as museum_name
+    events = query_db('''
+        SELECT events.*, museums.name AS museum_name
         FROM user_events
         JOIN events ON user_events.event_id = events.id
         JOIN museums ON events.museum_id = museums.id
-        WHERE user_events.user_id = ?
+        WHERE user_events.user_id = %s
         ORDER BY events.date, events.time
-    ''', (user_id,)).fetchall()
-    return jsonify([dict(row) for row in events])
+    ''', (user_id,))
+    return jsonify(events)
 
+# ------------------- ОТЗЫВЫ -------------------
 @app.route('/api/museum/<int:museum_id>/reviews')
 def get_museum_reviews(museum_id):
-    db = get_db()
-    reviews = db.execute('''
+    reviews = query_db('''
         SELECT id, user_id, rating, text, user_name, created_at
-        FROM reviews WHERE museum_id = ?
+        FROM reviews
+        WHERE museum_id = %s
         ORDER BY created_at DESC LIMIT 10
-    ''', (museum_id,)).fetchall()
-    return jsonify([dict(row) for row in reviews])
+    ''', (museum_id,))
+    return jsonify(reviews)
 
 @app.route('/api/museum/<int:museum_id>/rating')
 def get_museum_rating(museum_id):
-    db = get_db()
-    avg = db.execute('SELECT AVG(rating) as avg FROM reviews WHERE museum_id = ?', (museum_id,)).fetchone()
-    return jsonify({'average': avg['avg'] or 0})
+    row = query_db('SELECT AVG(rating) AS avg FROM reviews WHERE museum_id = %s', (museum_id,), one=True)
+    avg = float(row['avg']) if row and row['avg'] is not None else 0
+    return jsonify({'average': avg})
 
 @app.route('/api/reviews/add', methods=['POST'])
 def add_review():
@@ -594,17 +554,19 @@ def add_review():
     user_name = data.get('user_name')
     if not museum_id or not user_id or not rating:
         return jsonify({'error': 'Missing data'}), 400
-    db = get_db()
-    existing = db.execute('SELECT id FROM reviews WHERE museum_id = ? AND user_id = ?', (museum_id, user_id)).fetchone()
+    existing = query_db(
+        'SELECT id FROM reviews WHERE museum_id = %s AND user_id = %s',
+        (museum_id, user_id), one=True
+    )
     if existing:
         return jsonify({'error': 'Already reviewed'}), 400
-    db.execute('''
+    execute_db('''
         INSERT INTO reviews (museum_id, user_id, rating, text, user_name)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
     ''', (museum_id, user_id, rating, text, user_name))
-    db.commit()
     return jsonify({'status': 'ok'})
 
+# ------------------- ВЕБХУК -------------------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
@@ -618,10 +580,10 @@ def webhook():
         })
     return jsonify({})
 
+# ============================================================
+# ЗАПУСК
+# ============================================================
 if __name__ == '__main__':
-    if not os.path.exists(DATABASE):
+    with app.app_context():
         migrate_db()
-    else:
-        with app.app_context():
-            migrate_db()
     app.run(debug=True, host='0.0.0.0', port=5000)
