@@ -298,6 +298,9 @@ async function renderMain() {
     const container = document.getElementById('museums-list');
     if (!container) return;
 
+    // Показываем индикатор загрузки
+    container.innerHTML = '<p style="text-align:center;padding:2rem;color:#7b4a2e;">⏳ Загрузка музеев...</p>';
+
     const searchQuery = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
     const cityFilter = document.getElementById('city-filter')?.value || '';
 
@@ -309,15 +312,14 @@ async function renderMain() {
         filtered = filtered.filter(m => extractCity(m.address) === cityFilter);
     }
 
-    container.innerHTML = '';
     if (filtered.length === 0) {
         container.innerHTML = '<p>Музеи не найдены. Попробуйте изменить запрос.</p>';
         return;
     }
 
+    // Рендерим карточки без фото (быстро)
+    container.innerHTML = '';
     for (const m of filtered) {
-        const photos = await getMuseumPhotos(m.id);
-        const coverPhoto = m.cover_photo_url || (photos.length ? photos[0] : '');
         const isSubscribed = subscriptions.some(s => s.id === m.id);
         const isVisited = visits.some(v => v.museum_id === m.id && v.visited === 1);
         const card = document.createElement('div');
@@ -327,9 +329,13 @@ async function renderMain() {
             if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
             showMuseumDetails(m.id);
         });
+        // Обложку пока показываем из cover_photo_url, а если её нет — загрузим позже
+        const coverPhoto = m.cover_photo_url || '';
         card.innerHTML = `
             <h3>${escapeHtml(m.name)}</h3>
-            ${coverPhoto ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px;object-fit:cover;">` : '<div style="height:120px;background:#f0e3d4;display:flex;align-items:center;justify-content:center;">Нет фото</div>'}
+            <div class="photo-placeholder" data-museum-id="${m.id}">
+                ${coverPhoto ? `<img src="${coverPhoto}" alt="фото музея" style="max-height:180px;object-fit:cover;">` : '<div style="height:120px;background:#f0e3d4;display:flex;align-items:center;justify-content:center;">Загрузка фото...</div>'}
+            </div>
             <p>${escapeHtml(m.description || '').substring(0, 100)}${(m.description || '').length > 100 ? '...' : ''}</p>
             <p><i class="fas fa-map-marker-alt"></i> ${escapeHtml(m.address)}</p>
             ${m.pushkin_card === 'да' ? '<p><i class="fas fa-id-card"></i> <strong>Пушкинская карта</strong> ✓</p>' : ''}
@@ -341,6 +347,7 @@ async function renderMain() {
         container.appendChild(card);
     }
 
+    // Навешиваем обработчики кнопок
     document.querySelectorAll('.exhibits-btn').forEach(btn => {
         btn.addEventListener('click', (e) => { e.stopPropagation(); showExhibits(parseInt(btn.dataset.id)); });
     });
@@ -376,6 +383,18 @@ async function renderMain() {
             btn.innerHTML = nv ? '<i class="fas fa-check-circle"></i> Посещён' : '<i class="fas fa-circle"></i> Отметить посещение';
             renderPassport();
         });
+    });
+
+    // ФОТОГРАФИИ ДОГРУЖАЕМ В ФОНЕ — по одной, не блокируя интерфейс
+    filtered.forEach(m => {
+        if (m.cover_photo_url) return; // уже есть обложка
+        getMuseumPhotos(m.id).then(photos => {
+            if (!photos.length) return;
+            const placeholder = document.querySelector(`.photo-placeholder[data-museum-id="${m.id}"]`);
+            if (placeholder) {
+                placeholder.innerHTML = `<img src="${photos[0]}" alt="фото музея" style="max-height:180px;object-fit:cover;">`;
+            }
+        }).catch(() => { /* ничего не делаем при ошибке */ });
     });
 }
 
@@ -707,33 +726,43 @@ function initTabs() {
 
 // Инициализация
 window.addEventListener('DOMContentLoaded', async () => {
-    currentUserId = getUserId();
-    await loadMuseums();
-    await loadSubscriptions();
-    await loadVisits();
-    await loadFavorites();
-    await preloadAllPhotos();
-    renderMain();
-    renderPassport();
-    renderTodayExhibit();
-    initTabs();
+    // Общий try/catch — если что-то упадёт, страница всё равно отрендерится
+    try {
+        currentUserId = getUserId();
 
-    // Поиск и фильтр
-    const searchInput = document.getElementById('search-input');
-    if (searchInput) searchInput.addEventListener('input', () => renderMain());
-    const cityFilter = document.getElementById('city-filter');
-    if (cityFilter) cityFilter.addEventListener('change', () => renderMain());
+        try { await loadMuseums(); } catch (e) { console.error('Museums load error:', e); }
+        try { await loadSubscriptions(); } catch (e) { console.error('Subs load error:', e); }
+        try { await loadVisits(); } catch (e) { console.error('Visits load error:', e); }
+        try { await loadFavorites(); } catch (e) { console.error('Favorites load error:', e); }
 
-    const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
-    if (filterCheckbox) filterCheckbox.addEventListener('change', () => renderEvents());
+        // Сначала рендерим главную с данными, которые уже есть
+        await renderMain();
+        initTabs();
 
-    renderCalendar(currentYear, currentMonth);
+        // Затем — остальное в фоне, чтобы не блокировать загрузку
+        renderPassport().catch(e => console.error('Passport error:', e));
+        renderTodayExhibit().catch(e => console.error('Today error:', e));
 
-    if (typeof ymaps !== 'undefined') {
-        ymaps.ready(() => { ymapsReady = true; initYandexMap(); });
+        // Поиск и фильтр
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) searchInput.addEventListener('input', () => renderMain());
+        const cityFilter = document.getElementById('city-filter');
+        if (cityFilter) cityFilter.addEventListener('change', () => renderMain());
+
+        const filterCheckbox = document.getElementById('showOnlySubscribedEvents');
+        if (filterCheckbox) filterCheckbox.addEventListener('change', () => renderEvents());
+
+        renderCalendar(currentYear, currentMonth).catch(e => console.error('Calendar error:', e));
+
+        if (typeof ymaps !== 'undefined') {
+            ymaps.ready(() => { ymapsReady = true; initYandexMap(); });
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const museumId = urlParams.get('museum');
+        if (museumId) setTimeout(() => showMuseumDetails(parseInt(museumId)), 500);
+
+    } catch (globalError) {
+        console.error('Critical init error:', globalError);
     }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const museumId = urlParams.get('museum');
-    if (museumId) setTimeout(() => showMuseumDetails(parseInt(museumId)), 500);
 });
