@@ -10,7 +10,7 @@ app.secret_key = 'skfu_hackathon_2026'
 CORS(app)
 
 # ВАЖНО: Путь к базе данных на постоянном диске Render
-DATABASE = '/var/data/museum.db' 
+DATABASE = 'museum.db' 
 ADMIN_PASSWORD = 'admin123'
 
 def get_db():
