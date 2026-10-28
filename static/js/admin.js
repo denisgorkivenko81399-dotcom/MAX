@@ -7,6 +7,7 @@ let currentAdminTab = 'museums';
 document.addEventListener('DOMContentLoaded', () => {
     initAdminTabs();
     loadMuseumsList();
+    initPhotoAddBtn(); // Инициализация кнопки добавления фото
 });
 
 // Переключение вкладок
@@ -318,7 +319,7 @@ async function loadMuseumsForPhotos() {
         return;
     }
     
-    select.innerHTML = '<option value="">Загрузка...</option>'; // Показываем, что начали
+    select.innerHTML = '<option value="">Загрузка...</option>';
     
     try {
         const museums = await adminApi('/api/admin/museums');
@@ -344,7 +345,76 @@ async function loadMuseumsForPhotos() {
     } catch (e) {
         console.error("Ошибка при загрузке музеев:", e);
         select.innerHTML = '<option value="">Ошибка загрузки</option>';
-        alert('Ошибка загрузки списка музеев: ' + e.message);
+    }
+}
+
+async function loadPhotosForMuseum(museumId) {
+    if (!museumId) return;
+    const container = document.getElementById('photos-list-admin');
+    try {
+        const photos = await adminApi(`/api/admin/museum_photos/${museumId}`);
+        let html = `<table class="admin-table">
+            <thead><tr><th>ID</th><th>Фото URL</th><th>Действия</th></tr></thead><tbody>`;
+        photos.forEach(p => {
+            html += `<tr>
+                <td>${p.id}</td>
+                <td><a href="${p.photo_url}" target="_blank">${escapeHtml(p.photo_url)}</a></td>
+                <td class="admin-actions">
+                    <button class="delete-photo" data-id="${p.id}" data-museum="${museumId}"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+        container.querySelectorAll('.delete-photo').forEach(btn => {
+            btn.addEventListener('click', () => deletePhoto(parseInt(btn.dataset.id), parseInt(btn.dataset.museum)));
+        });
+    } catch (e) {
+        container.innerHTML = '<p>Ошибка загрузки фото: ' + e.message + '</p>';
+    }
+}
+
+async function deletePhoto(photoId, museumId) {
+    if (!confirm('Удалить фото?')) return;
+    try {
+        await adminApi(`/api/admin/museum_photos/${museumId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ photo_id: photoId })
+        });
+        alert('Фото удалено');
+        loadPhotosForMuseum(museumId);
+    } catch (e) {
+        alert('Ошибка удаления: ' + e.message);
+    }
+}
+
+// Инициализация кнопки добавления фото
+function initPhotoAddBtn() {
+    const addPhotoBtn = document.getElementById('addPhotoBtn');
+    if (addPhotoBtn) {
+        addPhotoBtn.addEventListener('click', () => {
+            const select = document.getElementById('museumSelectPhotos');
+            const museumId = select ? select.value : null;
+            
+            if (!museumId) {
+                alert('Сначала выберите музей из выпадающего списка!');
+                return;
+            }
+            
+            const url = prompt('Введите URL нового фото (начиная с http:// или https://):');
+            
+            if (url && url.trim() !== '') {
+                adminApi(`/api/admin/museum_photos/${museumId}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ photo_url: url.trim() })
+                }).then(() => {
+                    alert('Фото успешно добавлено!');
+                    loadPhotosForMuseum(museumId);
+                }).catch(e => {
+                    alert('Ошибка при добавлении фото: ' + e.message);
+                });
+            }
+        });
     }
 }
 
@@ -498,7 +568,6 @@ async function submitForm() {
     if (data.museum_id) data.museum_id = parseInt(data.museum_id) || null;
     if (data.rating) data.rating = parseInt(data.rating);
 
-    // Определяем правильный URL эндпоинта (исправление для edu-post)
     let entityUrl;
     if (editType === 'edu-post') {
         entityUrl = 'educational_posts';
