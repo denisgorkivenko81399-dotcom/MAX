@@ -598,3 +598,31 @@ async function submitForm() {
         alert('Ошибка: ' + e.message);
     }
 }
+// НАДЕЖНАЯ ФУНКЦИЯ ДОБАВЛЕНИЯ ФОТО
+window.addNewPhoto = function() {
+    // Проверка, что клик сработал (появится всплывающее окно)
+    alert('Кнопка нажата! Сейчас откроется поле для ввода ссылки.');
+    
+    const select = document.getElementById('museumSelectPhotos');
+    const museumId = select ? select.value : null;
+
+    if (!museumId) {
+        alert('Сначала выберите музей из выпадающего списка!');
+        return;
+    }
+
+    const url = prompt('Введите URL нового фото (начиная с http:// или https://):');
+
+    if (url && url.trim() !== '') {
+        // Берем функцию adminApi из твоего файла
+        adminApi(`/api/admin/museum_photos/${museumId}`, {
+            method: 'POST',
+            body: JSON.stringify({ photo_url: url.trim() })
+        }).then(() => {
+            alert('Фото успешно добавлено!');
+            loadPhotosForMuseum(museumId); // Обновляем список фото
+        }).catch(e => {
+            alert('Ошибка при добавлении фото: ' + e.message);
+        });
+    }
+};
