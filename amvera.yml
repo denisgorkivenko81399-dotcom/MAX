@@ -8,4 +8,4 @@ build:
 run:
   persistenceMount: /data
   containerPort: 5000
-  command: python app.py
+  command: gunicorn -b 0.0.0.0:5000 app:app
