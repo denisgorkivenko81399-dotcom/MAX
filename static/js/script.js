@@ -535,54 +535,72 @@ async function renderEvents() {
     `).join('');
 }
 
+// Глобальная переменная для хранения постов (нужна для кнопки "Читать полностью")
+let allEducationalPosts = [];
+
 // Лента постов
 async function renderEducationalPosts() {
     const container = document.getElementById('educational-posts');
     if (!container) return;
     try {
         const posts = await api('/api/educational/posts');
+        allEducationalPosts = posts; // Сохраняем посты, чтобы брать полный текст
+
         if (posts.length === 0) {
             container.innerHTML = '<p>Пока нет образовательных материалов. Загляните позже!</p>';
             return;
         }
+        
         let html = '';
         for (const post of posts) {
             const comments = await api(`/api/educational/posts/${post.id}/comments`);
+            
+            // Логика обрезки текста
+            const isLong = post.content.length > 150;
+            const shortContent = isLong ? post.content.substring(0, 150) + '...' : post.content;
+
             html += `
                 <div class="card educational-post" data-post-id="${post.id}">
-                    ${post.photo_url ? `<img src="${post.photo_url}" alt="иллюстрация" style="max-height:200px;object-fit:cover;">` : ''}
-                    <h3>${escapeHtml(post.title)}</h3>
-                    <p class="post-meta">${escapeHtml(post.author || 'Аноним')} • ${new Date(post.created_at).toLocaleDateString('ru-RU')}</p>
+                    ${post.photo_url ? `<img src="${post.photo_url}" alt="иллюстрация" style="max-height:220px; width:100%; object-fit:cover; border-radius:15px; margin-bottom:10px;">` : ''}
+                    <h3 style="margin-top:0;">${escapeHtml(post.title)}</h3>
+                    
+                    <!-- Убрали дату, оставили только автора -->
+                    <p class="post-meta">${escapeHtml(post.author || 'Сотрудник музея')}</p>
                     ${post.museum_name ? `<p class="post-museum">🏛️ ${escapeHtml(post.museum_name)}</p>` : ''}
-                    <div class="post-content">${escapeHtml(post.content)}</div>
+                    
+                    <!-- Текст с уникальным ID для раскрытия -->
+                    <div class="post-content" id="post-text-${post.id}" style="white-space: pre-wrap; font-size:0.95em;">${escapeHtml(shortContent)}</div>
+                    
+                    <!-- Кнопка "Читать полностью" (появляется, если текст длинный) -->
+                    ${isLong ? `<button onclick="togglePostText(${post.id})" id="btn-text-${post.id}" style="margin-top:10px; margin-bottom:10px; background:#7b4a2e; color:white; padding:6px 15px; border:none; border-radius:20px; cursor:pointer; font-size:0.85em;">Читать полностью</button>` : ''}
 
-                    <div class="post-share">
+                    <div class="post-share" style="margin-top:10px; display:flex; gap:5px; flex-wrap:wrap;">
                         <button class="share-btn share-vk" data-post-id="${post.id}"><i class="fab fa-vk"></i> ВК</button>
                         <button class="share-btn share-ok" data-post-id="${post.id}"><i class="fab fa-odnoklassniki"></i> ОК</button>
                         <button class="share-btn share-max" data-post-id="${post.id}"><i class="fas fa-share-alt"></i> МАХ</button>
                         <button class="share-btn copy-post-link" data-post-id="${post.id}"><i class="fas fa-copy"></i> Ссылка</button>
                     </div>
 
-                    <div class="comments-section">
+                    <div class="comments-section" style="margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
                         <h4><i class="fas fa-comments"></i> Комментарии (${comments.length})</h4>
                         <div class="comments-list">
                             ${comments.map(c => `
-                                <div class="comment-item">
+                                <div class="comment-item" style="margin-bottom:8px;">
                                     <strong>${escapeHtml(c.user_name || 'Аноним')}</strong>
-                                    <small>${new Date(c.created_at).toLocaleString('ru-RU')}</small>
-                                    <p>${escapeHtml(c.text)}</p>
+                                    <p style="margin:2px 0; font-size:0.9em;">${escapeHtml(c.text)}</p>
                                 </div>
                             `).join('')}
                         </div>
-                        <div class="comment-form">
-                            <input type="text" class="comment-input" data-post-id="${post.id}" placeholder="Оставьте комментарий...">
-                            <button class="comment-submit" data-post-id="${post.id}">Отправить</button>
+                        <div class="comment-form" style="display:flex; gap:5px; margin-top:10px;">
+                            <input type="text" class="comment-input" data-post-id="${post.id}" placeholder="Оставьте комментарий..." style="flex:1; padding:8px; border-radius:15px; border:1px solid #ccc;">
+                            <button class="comment-submit" data-post-id="${post.id}" style="padding:8px 15px; border-radius:15px; background:#7b4a2e; color:white; border:none;">Отправить</button>
                         </div>
                     </div>
                 </div>`;
         }
         container.innerHTML = html;
 
+        // --- Обработчики для кнопок "Поделиться" ---
         container.querySelectorAll('.share-vk').forEach(btn => btn.addEventListener('click', () => {
             const postId = btn.dataset.postId;
             const url = encodeURIComponent(window.location.origin + '/#post' + postId);
@@ -607,12 +625,14 @@ async function renderEducationalPosts() {
             alert('Ссылка скопирована!');
         }));
 
+        // --- Обработчики для формы комментариев ---
         container.querySelectorAll('.comment-submit').forEach(btn => btn.addEventListener('click', async () => {
             const postId = btn.dataset.postId;
             const input = container.querySelector(`.comment-input[data-post-id="${postId}"]`);
             const text = (input.value || '').trim();
             if (!text) return;
             const name = prompt('Ваше имя (или оставьте пустым для анонима):') || null;
+            
             await api(`/api/educational/posts/${postId}/comments`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -622,13 +642,31 @@ async function renderEducationalPosts() {
                 })
             });
             input.value = '';
-            renderEducationalPosts();
+            renderEducationalPosts(); // обновляем ленту, чтобы показать новый коммент
         }));
+
     } catch (e) {
         container.innerHTML = '<p>Ошибка загрузки постов</p>';
     }
 }
 
+// Функция для раскрытия/скрытия полного текста поста
+window.togglePostText = function(postId) {
+    const contentDiv = document.getElementById(`post-text-${postId}`);
+    const btn = document.getElementById(`btn-text-${postId}`);
+    const post = allEducationalPosts.find(p => p.id === postId);
+    
+    if (contentDiv && btn && post) {
+        if (btn.textContent === 'Читать полностью') {
+            contentDiv.textContent = post.content; // Показываем весь текст
+            btn.textContent = 'Скрыть';
+        } else {
+            const shortContent = post.content.length > 150 ? post.content.substring(0, 150) + '...' : post.content;
+            contentDiv.textContent = shortContent; // Показываем превью
+            btn.textContent = 'Читать полностью';
+        }
+    }
+}
 // Факт дня
 async function renderTodayExhibit() {
     const container = document.getElementById('today-exhibit-content');
